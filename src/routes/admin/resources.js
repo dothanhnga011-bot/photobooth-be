@@ -4,7 +4,7 @@ import { z } from "zod";
 import { User, Room, Package, Frame, Sticker } from "../../models/index.js";
 import { admin, isAdmin, staffBranch, STAFF_PERMISSIONS } from "../../middleware/auth.js";
 import { fail, id, text, priceVND } from "../validation.js";
-import { leastSheets } from "../print-count.js";
+import { INSTAX_SHEETS, leastSheets } from "../print-count.js";
 import { moveFrame, withFrameCatalogLock } from "../../services/frame-order.js";
 import {
   FRAME_LIST_FIELDS,
@@ -76,11 +76,11 @@ const resources = {
       description: z.string().max(1000),
       price: priceVND(100_000_000),
       duration: z.number().int().min(1).max(30),
-      shots: z.number().int().min(1).max(40).default(12),
+      shots: z.number().int().min(0).max(40).default(12),
       countdownSeconds: z.number().int().min(1).max(30).default(10),
       selectCount: z.number().int().min(1).max(12).default(4),
       printSize: z.enum(["full", "strip", "instax"]).default("full"),
-      prints: z.number().int().min(0).max(20),
+      prints: z.number().int().min(0).max(20).optional(),
       branches: z
         .array(z.string().trim().min(1).max(200))
         .max(50)
@@ -88,16 +88,20 @@ const resources = {
         .transform((items) => [...new Set(items)]),
       active,
     }).superRefine((pack, ctx) => {
-      // Khách in tối thiểu 2 tờ: khổ nhỏ 1 tờ 10 × 15 cắt đôi, khổ to 2 tờ, Instax 2 tấm.
-      if (pack.prints < leastSheets(pack.printSize))
+      // Layout Polaroid (khổ Instax): luôn in 1 tấm, chụp không giới hạn trong thời gian chụp.
+      if (pack.printSize === "instax") return;
+      if (pack.shots < 1)
+        ctx.addIssue({ code: "custom", path: ["shots"], message: "phải từ 1 trở lên" });
+      // Khách in tối thiểu 2 tờ: khổ nhỏ 1 tờ 10 × 15 cắt đôi, khổ to 2 tờ.
+      if (!(pack.prints >= leastSheets(pack.printSize)))
         ctx.addIssue({
           code: "custom",
           path: ["prints"],
           message: pack.printSize === "strip"
             ? "khổ nhỏ kèm ít nhất 1 tờ 10 × 15 (cắt đôi = 2 tờ nhỏ)"
-            : pack.printSize === "instax" ? "khổ Instax kèm ít nhất 2 tấm" : "khổ to kèm ít nhất 2 tờ",
+            : "khổ to kèm ít nhất 2 tờ",
         });
-    }),
+    }).transform((pack) => (pack.printSize === "instax" ? { ...pack, prints: INSTAX_SHEETS, shots: 0 } : pack)),
   ],
   frames: [
     Frame,

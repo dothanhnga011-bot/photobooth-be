@@ -7,7 +7,7 @@ import sharp from "sharp";
 import { z } from "zod";
 import { config } from "../config.js";
 import { Booking, Room, Package, KioskAttempt, Setting } from "../models/index.js";
-import { extraPriceFor, minSheets, piecesPerSheet, saleTotal } from "./print-count.js";
+import { extraPriceFor, INSTAX_SHEETS, minSheets, piecesPerSheet, saleTotal } from "./print-count.js";
 import { instaxState, readPrinterStatus } from "../services/printer-status.js";
 import { appendCapture, finishCapture } from "../services/capture.js";
 import { timed } from "../services/image-save-queue.js";
@@ -240,12 +240,13 @@ kioskRouter.post("/polaroid", sensitive(), async (req, res) => {
         roomName: room.name,
         package: pack._id,
         packageName: pack.name,
-        shots: pack.shots,
+        // Không ghi số lần chụp: khách bấm dây không giới hạn trong thời gian chụp. Layout in đúng
+        // 1 tấm Instax (gói cũ ghi 2 tấm cũng chỉ in 1).
         countdownSeconds: pack.countdownSeconds || 10,
         selectCount: pack.selectCount || 4,
         printSize: "instax",
         captureDuration: pack.duration,
-        prints: minSheets(pack),
+        prints: INSTAX_SHEETS,
         total: Number(pack.price) || 0,
         discount: 0,
         source: "polaroid",

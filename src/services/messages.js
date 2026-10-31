@@ -16,6 +16,7 @@ const LABELS = {
   price: "Giá",
   duration: "Thời gian chụp",
   prints: "Số tờ in",
+  shots: "Số lần chụp",
   sheets: "Số tờ in thêm",
   extraPrintPrice: "Giá in thêm mỗi tờ",
   description: "Mô tả",

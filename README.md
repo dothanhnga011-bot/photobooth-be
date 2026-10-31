@@ -231,16 +231,18 @@ Link WIDE khác ở mục ngay sau.
 3. Thêm vào `.env` của print agent: `INSTAX_ADDRESS=<địa chỉ trên>` và
    `INSTAX_PYTHON=C:\PhotoBooth\instax-sdk\.venv\Scripts\python.exe`. Một print agent in được cả DNP và
    Instax; agent chỉ nhận lệnh của khổ mà máy in cạnh nó in được.
-4. Print agent báo tình trạng máy Instax lên máy chủ mỗi phút và sau mỗi lần in. Máy chụp chỉ cho chọn khổ
-   Instax khi máy in còn kết nối và còn ít nhất 2 tấm phim, và không cho chọn quá số phim còn lại; quản trị
+4. Print agent báo tình trạng máy Instax lên máy chủ mỗi phút và sau mỗi lần in. Máy chụp báo nhân viên khi
+   máy in mất kết nối hoặc hết phim (mỗi layout in 1 tấm), và không cho chọn quá số phim còn lại; quản trị
    xem số phim / pin ở **Quản lý máy**. Lệnh in kiểm tra đủ phim trước khi in tấm đầu; tấm nào máy in không
    xác nhận thì dừng và báo nhân viên xem khay trước khi bấm In lại (không tự in lại để tránh in trùng).
 
 Khung Instax: Quản trị → Khung ảnh → Thêm mới → **Size Instax** (thẻ Instax Wide, ảnh ngang 1800 × 1200 — chừa
 lề ~50 px trên / dưới, ~20 px hai bên vì phim che mép). Mỗi tấm in là ảnh ngang 1260 × 840
 (`scripts/instax-bridge.py` nén vừa giới hạn của máy in). Quản trị → Khổ ảnh & bảng giá → tab **Polaroid** →
-**Tạo 6 layout mẫu** tạo layout 1, 2, 3, 4, 5 (2 ảnh to bên trái + 3 ảnh bé bên phải), 6 ảnh (110.000 đ, 2 tấm) kèm
-khung trắng đúng số ô trong chủ đề “Layout trắng”; layout / khung đã có cùng số ảnh được giữ nguyên.
+**Tạo 6 layout mẫu** tạo layout 1, 2, 3, 4, 5 (2 ảnh to bên trái + 3 ảnh bé bên phải), 6 ảnh (110.000 đ, 5 phút chụp, in 1 tấm) kèm
+khung trắng đúng số ô trong chủ đề “Layout trắng”; layout / khung đã có cùng số ảnh được giữ nguyên. Layout
+Polaroid luôn in đúng 1 tấm và không giới hạn số lần chụp (lượt chụp không ghi số lần chụp, chỉ có thời gian chụp);
+khách nhận toàn bộ ảnh gốc qua mã QR, phòng Polaroid không quay video.
 
 #### Máy Instax Link WIDE
 

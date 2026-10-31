@@ -1,5 +1,5 @@
 import { Setting } from "../models/index.js";
-import { MIN_PIECES } from "../routes/print-count.js";
+import { INSTAX_SHEETS } from "../routes/print-count.js";
 
 // Tình trạng máy in Instax (Link WIDE) do print agent cạnh máy in báo về (mỗi phút và sau mỗi lần
 // in): còn kết nối Bluetooth không, còn bao nhiêu tấm phim, pin. Máy chụp chỉ bán / nhận khổ
@@ -45,7 +45,7 @@ export async function listPrinterStatus(branch) {
   return rows.map((row) => ({ branch: row.key.slice("printers:".length), ...describe(row.value) }));
 }
 
-// Máy Instax dùng được khi print agent vừa báo (≤ 3 phút), còn kết nối và còn ít nhất 2 tấm phim.
+// Máy Instax dùng được khi print agent vừa báo (≤ 3 phút), còn kết nối và còn phim cho 1 layout (1 tấm).
 export function instaxState(status, now = Date.now()) {
   const instax = status?.instax;
   if (!instax) return { ready: false, film: null, message: "Máy in Instax chưa kết nối với máy tính." };
@@ -56,7 +56,7 @@ export function instaxState(status, now = Date.now()) {
     return { ...base, ready: false, message: "Chương trình in (print agent) cạnh máy Instax không báo về." };
   if (!instax.connected)
     return { ...base, ready: false, message: instax.message || "Máy in Instax chưa bật hoặc mất kết nối Bluetooth." };
-  if (film !== null && film < MIN_PIECES)
+  if (film !== null && film < INSTAX_SHEETS)
     return { ...base, ready: false, message: film ? `Máy Instax chỉ còn ${film} tấm phim.` : "Máy Instax hết phim." };
   return { ...base, ready: true, message: instax.message || "" };
 }
