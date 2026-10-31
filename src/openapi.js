@@ -1742,7 +1742,7 @@ export const openapi = {
     "/api/admin/themes": {
       get: {
         tags: ["Danh mục & cài đặt"],
-        summary: "Chủ đề (bộ khung): số khung, số ô ảnh, trạng thái, thứ tự",
+        summary: "Chủ đề (bộ khung): loại hình chụp (photobooth / polaroid), số khung, số ô ảnh, trạng thái, thứ tự",
         description: adminOnly,
         security: loggedIn,
         responses: { ...ok("Danh sách", { type: "array", items: { type: "object" } }), ...errors(401, 403) },
@@ -1752,7 +1752,10 @@ export const openapi = {
         summary: "Thêm chủ đề (chưa có khung)",
         description: adminOnly,
         security: loggedIn,
-        requestBody: body({ name: str("Tên chủ đề") }, ["name"]),
+        requestBody: body({
+          name: str("Tên chủ đề"),
+          kind: { type: "string", enum: ["photobooth", "polaroid"], description: "Chủ đề của phòng Photobooth (mặc định) hay phòng Polaroid" },
+        }, ["name"]),
         responses: { ...ok("Danh sách", { type: "array", items: { type: "object" } }, 201), ...errors(400, 401, 403, 409) },
       },
       put: {

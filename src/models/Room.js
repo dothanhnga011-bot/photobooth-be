@@ -16,7 +16,7 @@ const roomSchema = new mongoose.Schema(
     lastSeenAt: { type: Date, default: null },
     // Loại hình chụp của phòng (chọn khi Cài máy chụp): "photobooth" = khách chọn Nhập mã (chuyển
     // khoản ở quầy) hoặc Tiền mặt (đút tiền) rồi chụp, in DNP; "polaroid" = khách chọn layout rồi
-    // chụp luôn, trả tiền ở quầy, in Instax mini.
+    // chụp bằng dây bấm, trả tiền ở quầy, in Instax Wide.
     kind: { type: String, enum: ["photobooth", "polaroid"], default: "photobooth" },
     // Cũ (trước khi chia photobooth / polaroid): phòng nhập mã / phòng đút tiền. Không còn dùng.
     payment: { type: String, enum: ["counter", "cash"], default: "counter" },

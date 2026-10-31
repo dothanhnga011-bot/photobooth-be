@@ -1,7 +1,7 @@
 import { Setting } from "../models/index.js";
 import { MIN_PIECES } from "../routes/print-count.js";
 
-// Tình trạng máy in Instax mini Link 3 do print agent cạnh máy in báo về (mỗi phút và sau mỗi lần
+// Tình trạng máy in Instax (Link WIDE) do print agent cạnh máy in báo về (mỗi phút và sau mỗi lần
 // in): còn kết nối Bluetooth không, còn bao nhiêu tấm phim, pin. Máy chụp chỉ bán / nhận khổ
 // Instax khi máy in sẵn sàng; quản trị xem ở Quản lý máy.
 export const PRINTER_FRESH_MS = 3 * 60 * 1000;

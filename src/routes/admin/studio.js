@@ -113,8 +113,11 @@ studioRouter.delete("/screens/:id", admin, async (req, res) => {
 
 // ─── Thiết lập → Chủ đề ──────────────────────────────────────────────────
 // Chủ đề = các khung cùng “tên bộ chủ đề” (khách chọn cả bộ để ghép). Thông tin riêng của chủ đề
-// (bật / tắt, thứ tự hiện cho khách, chủ đề chưa có khung) lưu ở Setting studio.themes.
+// (bật / tắt, thứ tự hiện cho khách, chủ đề chưa có khung, loại hình chụp) lưu ở Setting studio.themes.
+// kind: chủ đề của phòng Photobooth (khung 10 × 15) hay phòng Polaroid (khung Instax); chủ đề cũ chưa
+// lưu loại thì theo khung trong chủ đề.
 const themeName = z.string().trim().min(1, "Vui lòng nhập tên chủ đề.").max(100);
+const themeKind = z.enum(["photobooth", "polaroid"]);
 const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const sameName = (name) => new RegExp(`^\\s*${escape(name)}\\s*$`);
 const storedThemes = async () =>
@@ -179,6 +182,7 @@ async function listThemes() {
       const meta = byName.get(name);
       return {
         name,
+        kind: meta?.kind || (group?.sizes?.includes("instax") ? "polaroid" : "photobooth"),
         active: meta?.active ?? true,
         order: meta ? meta.index : stored.length + names.indexOf(name),
         frames: group?.frames || 0,
@@ -194,16 +198,17 @@ async function listThemes() {
 // Lưu thứ tự + trạng thái của mọi chủ đề đang có, theo thứ tự đã sắp.
 const persist = (themes) =>
   saveThemes(
-    themes.map(({ name, active, createdAt }) => ({ name, active, createdAt: createdAt || new Date() })),
+    themes.map(({ name, kind, active, createdAt }) => ({ name, kind, active, createdAt: createdAt || new Date() })),
   );
 
 studioRouter.get("/themes", admin, async (req, res) => res.json(await listThemes()));
 studioRouter.post("/themes", admin, async (req, res) => {
   const name = themeName.parse(req.body.name);
+  const kind = themeKind.default("photobooth").parse(req.body.kind);
   const themes = await listThemes();
   if (themes.some((t) => t.name.toLocaleLowerCase("vi") === name.toLocaleLowerCase("vi")))
     fail(409, `Đã có chủ đề “${name}”.`);
-  await persist([...themes, { name, active: true, createdAt: new Date() }]);
+  await persist([...themes, { name, kind, active: true, createdAt: new Date() }]);
   res.status(201).json(await listThemes());
 });
 // Đổi tên (đổi luôn tên bộ của mọi khung trong chủ đề) và / hoặc bật / tắt hiển thị với khách.

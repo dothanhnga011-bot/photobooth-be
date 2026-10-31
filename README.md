@@ -208,13 +208,14 @@ Các file liên quan: `src/services/media-storage.js`, `src/routes/admin/storage
 - `DNP_PRINTER_NAME` trên chính máy chủ (khi máy chủ chạy ngay trên máy Windows cắm DNP) cũng in tự động không cần
   print agent. Không bật cách nào thì in lại từ trang Đơn hàng → "Tải ảnh" / "In ảnh".
 
-### Máy in Instax mini Link 3 (khổ Instax mini)
+### Máy in Instax Link WIDE (phòng Polaroid, khổ Instax)
 
-Máy in đi theo **khổ ảnh của gói**: khổ to / khổ nhỏ in ra DNP, khổ **Instax mini** in ra máy Instax đặt cạnh
-máy chụp. Fujifilm không có driver máy tính cho mini Link (chỉ có cho Link WIDE), nên print agent nói chuyện với
-máy in qua Bluetooth bằng thư viện nguồn mở [instax-sdk](https://github.com/arahe-dev/instax-sdk) (MIT, đã thử
-trên mini Link 3 với Windows 11). Đây không phải cách chính hãng: cập nhật firmware máy in có thể làm hỏng, nên
-thử trên đúng máy in trước khi nhận khách.
+Máy in đi theo **khổ ảnh của gói**: khổ to / khổ nhỏ in ra DNP, khổ **Instax** (layout phòng Polaroid) in ra máy
+Instax Link WIDE đặt cạnh máy chụp. Print agent nói chuyện với máy in qua Bluetooth bằng thư viện nguồn mở
+[instax-sdk](https://github.com/arahe-dev/instax-sdk) (MIT, đã thử trên mini Link 3 với Windows 11) để đọc được
+số phim / pin (driver máy tính của Fujifilm không báo số phim). Đây không phải cách chính hãng: cập nhật firmware
+máy in có thể làm hỏng, nên thử trên đúng máy in trước khi nhận khách. Các bước dưới đây viết cho mini Link 3;
+Link WIDE khác ở mục ngay sau.
 
 1. Trong app INSTAX trên điện thoại: đặt **tự tắt nguồn (auto power-off) = Tắt** (không thì máy in tự tắt sau
    5 phút), rồi ngắt kết nối điện thoại với máy in. Cắm sạc USB-C cho máy in.
@@ -235,8 +236,11 @@ thử trên đúng máy in trước khi nhận khách.
    xem số phim / pin ở **Quản lý máy**. Lệnh in kiểm tra đủ phim trước khi in tấm đầu; tấm nào máy in không
    xác nhận thì dừng và báo nhân viên xem khay trước khi bấm In lại (không tự in lại để tránh in trùng).
 
-Khung Instax: Quản trị → Khung ảnh → Thêm mới → **Size Instax** (ảnh 1200 × 1600, dọc 3 : 4). Mỗi tấm in là
-ảnh 600 × 800 (`scripts/instax-bridge.py` thu nhỏ / nén vừa giới hạn của máy in).
+Khung Instax: Quản trị → Khung ảnh → Thêm mới → **Size Instax** (thẻ Instax Wide, ảnh ngang 1800 × 1200 — chừa
+lề ~50 px trên / dưới, ~20 px hai bên vì phim che mép). Mỗi tấm in là ảnh ngang 1260 × 840
+(`scripts/instax-bridge.py` nén vừa giới hạn của máy in). Quản trị → Khổ ảnh & bảng giá → tab **Polaroid** →
+**Tạo 6 layout mẫu** tạo layout 1, 2, 3, 4, 5 (2 ảnh to bên trái + 3 ảnh bé bên phải), 6 ảnh (110.000 đ, 2 tấm) kèm
+khung trắng đúng số ô trong chủ đề “Layout trắng”; layout / khung đã có cùng số ảnh được giữ nguyên.
 
 #### Máy Instax Link WIDE
 
@@ -255,8 +259,8 @@ Cùng print agent và cùng bridge, nhưng instax-sdk **chưa thử trên Link W
   `INSTAX_CHANNEL=<kênh>` vào `.env`. Classic vẫn không được thì dùng BLE: `instax.exe scan` lấy địa chỉ dòng
   `(IOS)`, đặt `INSTAX_TRANSPORT=ble` và `INSTAX_ADDRESS=<địa chỉ đó>` (chậm hơn nhiều, có thể 1–2 phút một tấm).
 - **Một máy Instax mỗi print agent** (`INSTAX_ADDRESS`): chuyển sang Link WIDE thì mini Link 3 ngừng nhận lệnh.
-- **Chưa có khung khổ Wide:** tờ Instax dọc 600 × 800 được bridge xoay ngang và in giữa tấm phim Wide
-  (1120 × 840 trên 1260 × 840, hai bên để trắng).
+- **Tấm in:** máy chụp gửi ảnh ngang 1260 × 840 đúng khổ Wide. Lệnh in cũ khổ mini (dọc 600 × 800) vẫn in được:
+  bridge xoay ngang, in giữa tấm phim (hai bên để trắng).
 
 Tùy chọn phục vụ cả frontend đã build: đặt `FRONTEND_DIST=../photobooth-fe/dist` và
 `CLIENT_URL=http://localhost:8080` trong `.env` rồi khởi động lại.

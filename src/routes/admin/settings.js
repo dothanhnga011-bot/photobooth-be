@@ -10,7 +10,7 @@ settingsRouter.get("/", admin, async (req, res) =>
   res.json((await Setting.findOne({ key: "studio" }))?.value || {}),
 );
 
-// Only the extra-sheet prices (admins only): a 10 × 15 sheet and an Instax mini print. The rest of
+// Only the extra-sheet prices (admins only): a 10 × 15 sheet and an Instax Wide print. The rest of
 // the studio settings are left exactly as they are.
 settingsRouter.put("/extra-print-price", admin, async (req, res) => {
   const prices = z

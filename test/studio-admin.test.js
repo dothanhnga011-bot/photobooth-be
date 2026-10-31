@@ -187,17 +187,28 @@ test("waiting screens: one general screen plus per-machine screens reach the cat
 });
 
 test("themes group frames: rename, hide from customers, order and ungroup without deleting frames", async () => {
-  const frame = (name, themeName, order) =>
-    admin.post("/api/admin/frames").send({ name, themeName, order, image: png, slots: slot, active: true }).expect(200);
+  const frame = (name, themeName, order, printSize = "full") =>
+    admin.post("/api/admin/frames").send({ name, themeName, order, printSize, image: png, slots: slot, active: true }).expect(200);
   await frame("A1", "Kawaii", 1);
   await frame("A2", "Kawaii", 2);
   await frame("B1", "Basic", 1);
+  await frame("W1", "Wide trắng", 1, "instax");
   try {
     await staff.get("/api/admin/themes").expect(403);
     let themes = (await admin.get("/api/admin/themes").expect(200)).body;
-    assert.deepEqual(themes.map((t) => [t.name, t.frames, t.slots]).sort(), [["Basic", 1, 1], ["Kawaii", 2, 2]]);
+    assert.deepEqual(themes.map((t) => [t.name, t.frames, t.slots, t.kind]).sort(),
+      [["Basic", 1, 1, "photobooth"], ["Kawaii", 2, 2, "photobooth"], ["Wide trắng", 1, 1, "polaroid"]],
+      "a theme without a stored kind follows its frames: Instax frames make it a Polaroid theme");
+    await admin.post("/api/admin/themes").send({ name: "Sai loại", kind: "dnp" }).expect(400);
+    themes = (await admin.post("/api/admin/themes").send({ name: "Wide hồng", kind: "polaroid" }).expect(201)).body;
+    assert.deepEqual([themes.find((t) => t.name === "Wide hồng").kind, themes.find((t) => t.name === "Kawaii").kind],
+      ["polaroid", "photobooth"]);
+    await admin.delete(`/api/admin/themes/${encodeURIComponent("Wide hồng")}`).expect(200);
+    await admin.delete(`/api/admin/themes/${encodeURIComponent("Wide trắng")}`).expect(200);
+    await Frame.deleteOne({ name: "W1" });
     themes = (await admin.post("/api/admin/themes").send({ name: "Limited" }).expect(201)).body;
     assert.equal(themes.find((t) => t.name === "Limited").frames, 0);
+    assert.equal(themes.find((t) => t.name === "Limited").kind, "photobooth");
     await admin.post("/api/admin/themes").send({ name: "kawaii" }).expect(409);
     await admin.put("/api/admin/themes").send({ name: "Kawaii", newName: "Basic" }).expect(409);
     themes = (await admin.put("/api/admin/themes").send({ name: "Kawaii", newName: "Dễ thương" }).expect(200)).body;

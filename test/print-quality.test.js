@@ -114,19 +114,22 @@ test("corrupt pixels, MIME mismatches, unsupported formats and page sizes never 
   assert.deepEqual(await validatePrintImage(landscape, "image/png"), { width: 1800, height: 1200, extension: "png" });
 });
 
-test("an Instax album prints one 600 × 800 image per piece and refuses 10 × 15 sheets", async () => {
+test("an Instax album prints one 1260 × 840 Wide image per piece and refuses 10 × 15 sheets", async () => {
   const b = await Booking.create({
     code: String(nextCode++), accessToken: randomUUID(), status: "completed", prints: 2, printSize: "instax",
     photos: [{ file: "test-original.jpg", kind: "original" }],
   });
-  const instax = await sharp({ create: { width: 600, height: 800, channels: 3, background: "#d8b4a0" } })
+  const instax = await sharp({ create: { width: 1260, height: 840, channels: 3, background: "#d8b4a0" } })
     .jpeg({ quality: 92 }).toBuffer();
   const sheet = await post(b, [dataUrl(png, "image/png")]).expect(400);
-  assert.match(sheet.body.message, /Tấm Instax phải là ảnh dọc 600 × 800 px/);
-  const landscape = await sharp(instax).rotate(90).jpeg().toBuffer();
-  await post(b, [dataUrl(landscape, "image/jpeg")]).expect(400);
+  assert.match(sheet.body.message, /Tấm Instax Wide phải là ảnh ngang 1260 × 840 px/);
+  const portrait = await sharp(instax).rotate(90).jpeg().toBuffer();
+  await post(b, [dataUrl(portrait, "image/jpeg")]).expect(400);
   const printed = await post(b, [dataUrl(instax, "image/jpeg"), dataUrl(instax, "image/jpeg")]).expect(201);
-  assert.deepEqual([printed.body.width, printed.body.height, printed.body.sheetCount], [600, 800, 2]);
+  assert.deepEqual([printed.body.width, printed.body.height, printed.body.sheetCount], [1260, 840, 2]);
+  // A print queued by a kiosk before the switch from Instax mini still goes through.
+  const mini = await sharp({ create: { width: 600, height: 800, channels: 3, background: "#d8b4a0" } }).jpeg().toBuffer();
+  assert.deepEqual(await validatePrintImage(mini, "image/jpeg", "instax"), { width: 600, height: 800, extension: "jpg" });
   assert.equal((await PrintJob.findById(printed.body._id)).printSize, "instax");
   await assert.rejects(validatePrintImage(instax, "image/jpeg"), /Tờ ảnh phải là 1200 × 1800/);
 });
