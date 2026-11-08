@@ -269,7 +269,9 @@ albumsRouter.post("/:token/print-pack", printLimit, printBody, async (req, res) 
       roomName: b.roomName,
       room: b.room,
       branch: b.branch,
-      printSize: b.printSize || "full",
+      // Cắt đôi hay in nguyên tờ theo khung thật sự được in (gói ảnh nhỏ chưa có khung nhỏ thì
+      // ghép khung lớn: không được cắt đôi), không theo khổ của gói.
+      printSize: b.printSize === "instax" ? "instax" : d.printSize || b.printSize || "full",
       copies: 1,
       frameName: d.frameName,
       file: files[0],

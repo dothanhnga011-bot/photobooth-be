@@ -1432,6 +1432,7 @@ export const openapi = {
           { name: "X-Print-Key", in: "header", required: false, description: "Khi gửi nhị phân: mã yêu cầu (UUID) chống in trùng.", schema: uuid },
           { name: "X-Print-Frame", in: "header", required: false, description: "Khi gửi nhị phân: tên bộ khung, mã hóa encodeURIComponent (tối đa 100 ký tự).", schema: { type: "string" } },
           { name: "X-Print-Sheets", in: "header", required: false, description: "Khi gửi nhị phân: số byte của từng tờ theo thứ tự, ví dụ 3145728,2981234 (1–100 tờ, mỗi tờ ≤ 9 MB).", schema: { type: "string" } },
+          { name: "X-Print-Size", in: "header", required: false, description: "Khổ của khung được in: strip = máy DNP cắt đôi tờ thành 2 dải, full = in nguyên tờ. Bỏ trống: theo khổ của gói. Gói Instax luôn là instax.", schema: { type: "string", enum: ["full", "strip"] } },
         ],
         requestBody: (() => {
           const request = body(

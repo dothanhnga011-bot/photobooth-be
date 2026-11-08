@@ -1493,6 +1493,32 @@ test("lost print responses replay only identical sheets and request lookups stay
   assert.equal(replay.body._id, first.body._id);
   assert.equal(replay.body.printSheets, 2);
 });
+test("the printed frame's size decides the DNP cut, not the package's", async () => {
+  const { b, token } = await finishedAlbum();
+  await Booking.updateOne({ _id: b._id }, { $set: { printSize: "strip", prints: 3 } });
+  const png = await sharp({ create: { width: 1200, height: 1800, channels: 3, background: "#d4a5b5" } })
+    .png().toBuffer();
+  const send = (printSize) => {
+    const r = request(app)
+      .post(`/api/albums/${token}/print-pack`)
+      .set("Content-Type", "application/octet-stream")
+      .set("X-Print-Key", randomUUID())
+      .set("X-Print-Frame", "x")
+      .set("X-Print-Sheets", String(png.length));
+    if (printSize) r.set("X-Print-Size", printSize);
+    return r.send(png);
+  };
+  // Gói ảnh nhỏ chưa có khung nhỏ, ghép khung lớn: in nguyên tờ, không cắt đôi.
+  const big = await send("full").expect(201);
+  assert.equal((await PrintJob.findById(big.body._id)).printSize, "full");
+  // Khung nhỏ: máy cắt đôi.
+  const small = await send("strip").expect(201);
+  assert.equal((await PrintJob.findById(small.body._id)).printSize, "strip");
+  // Trang cũ không gửi khổ: theo gói như trước.
+  const legacy = await send().expect(201);
+  assert.equal((await PrintJob.findById(legacy.body._id)).printSize, "strip");
+  await send("instax").expect(400);
+});
 test("print sheets sent as raw bytes match the JSON form, so a retry is recognised either way", async () => {
   const { b, token } = await finishedAlbum();
   const png = await sharp({ create: { width: 1200, height: 1800, channels: 3, background: "#d4a5b5" } })

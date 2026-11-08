@@ -9,6 +9,9 @@ import { fail } from "./validation.js";
 export const printBody = express.raw({ type: "application/octet-stream", limit: "64mb", inflate: false });
 
 const MAX_SHEETS = 100;
+// Khổ của khung được in (máy chụp gửi kèm): "strip" = tờ 2 dải, máy DNP cắt đôi; "full" = in nguyên
+// tờ. Không gửi (trang cũ) thì theo khổ của gói. Instax luôn theo gói (máy in riêng).
+const SHEET_SIZE = z.enum(["full", "strip"]).optional();
 const MAX_SHEET_BYTES = 9_000_000; // the JSON limit: 12 M base64 characters
 const BASE64_CHUNK = 3 * 64 * 1024; // whole 3-byte groups, so chunked base64 joins up exactly
 
@@ -46,7 +49,9 @@ export function readPrintPack(req) {
       requestKey: z.uuid(),
       frameName: z.string().max(100),
       sizes: z.string().regex(/^\d{1,9}(,\d{1,9}){0,99}$/),
-    }).parse({ requestKey: req.get("X-Print-Key"), frameName, sizes: req.get("X-Print-Sheets") });
+      printSize: SHEET_SIZE,
+    }).parse({ requestKey: req.get("X-Print-Key"), frameName, sizes: req.get("X-Print-Sheets"),
+      printSize: req.get("X-Print-Size") || undefined });
     const sizes = d.sizes.split(",").map(Number);
     if (sizes.length > MAX_SHEETS || sizes.some((n) => n <= 0 || n > MAX_SHEET_BYTES) ||
         sizes.reduce((sum, n) => sum + n, 0) !== req.body.length)
@@ -58,7 +63,7 @@ export function readPrintPack(req) {
       if (!type) fail(400, "Ảnh in không hợp lệ.");
       return { buffer, type };
     });
-    return { requestKey: d.requestKey, frameName: d.frameName, sheets,
+    return { requestKey: d.requestKey, frameName: d.frameName, printSize: d.printSize, sheets,
       fingerprint: printFingerprint(d.frameName, sheets) };
   }
   const d = z
@@ -74,6 +79,7 @@ export function readPrintPack(req) {
         .max(MAX_SHEETS),
       frameName: z.string().max(100),
       requestKey: z.string().uuid(),
+      printSize: SHEET_SIZE,
     })
     .parse(req.body);
   const sheets = d.images.map((dataUrl) => ({
@@ -82,6 +88,6 @@ export function readPrintPack(req) {
     buffer: Buffer.from(dataUrl.split(",")[1], "base64"),
   }));
   const fingerprint = printFingerprint(d.frameName, sheets);
-  return { requestKey: d.requestKey, frameName: d.frameName,
+  return { requestKey: d.requestKey, frameName: d.frameName, printSize: d.printSize,
     sheets: sheets.map(({ type, buffer }) => ({ type, buffer })), fingerprint };
 }
