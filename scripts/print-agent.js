@@ -47,11 +47,9 @@ async function download(job, directory) {
   return files;
 }
 async function printDnp(job, files) {
-  // Khung nhỏ (2 dải trên một tờ 4x6) in qua hàng in "2inch cut" để máy cắt đôi; chưa tạo hàng in đó
-  // thì in qua hàng in chính (nhân viên tự cắt) thay vì bỏ lệnh in của khách.
+  // Khung nhỏ (2 dải trên một tờ 1200 × 1800): bật "2inch cut" cho riêng lệnh in này để máy DNP cắt đôi;
+  // khung to: tắt cắt, in nguyên tờ. Có hàng in cắt đôi riêng (DNP_STRIP_PRINTER_NAME) thì dùng hàng đó.
   const strip = job.printSize === "strip";
-  if (strip && !config.dnpStripPrinter && config.dnpPrinter)
-    console.warn("Chưa đặt DNP_STRIP_PRINTER_NAME — tờ 2 dải in qua máy chính, cần tự cắt đôi.");
   const printer = strip ? config.dnpStripPrinter || config.dnpPrinter : config.dnpPrinter;
   if (!printer)
     throw new Error("Thiếu DNP_PRINTER_NAME (tên máy in DNP trong Windows / trên Mac) trong file .env của print agent.");
@@ -60,8 +58,12 @@ async function printDnp(job, files) {
   else {
     const manifest = path.join(path.dirname(files[0]), "manifest.json");
     await fs.writeFile(manifest, JSON.stringify(sheets.flatMap(({ file, copies }) => Array(copies).fill(file))));
-    await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-File",
-      path.join(root, "scripts", "print-dnp.ps1"), "-PrinterName", printer, "-Manifest", manifest]);
+    const output = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-File",
+      path.join(root, "scripts", "print-dnp.ps1"), "-PrinterName", printer, "-Manifest", manifest,
+      "-Cut", strip ? "on" : "off"]);
+    if (strip && /CUT:unsupported/.test(output) && printer === config.dnpPrinter)
+      return `Đã gửi tới ${printer} — driver không nhận lệnh cắt đôi 2 inch: tờ nhỏ ra nguyên tờ, nhân viên tự cắt.`;
+    return `Đã gửi tới ${printer}${strip ? ", tờ nhỏ cắt đôi 2 inch" : ", in nguyên tờ"}.`;
   }
 }
 async function print(job) {

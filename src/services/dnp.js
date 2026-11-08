@@ -16,11 +16,10 @@ export function dispatchPrint(job) {
     .then(async () => {
       const directory = await fs.mkdtemp(path.join(os.tmpdir(), "photo-dnp-"));
       try {
-        const printerName = job.printSize === "strip"
-          ? config.dnpStripPrinter : config.dnpPrinter;
-        if (!printerName) throw new Error(
-          "Chưa cấu hình hàng in DNP cho ảnh dải 2 × 6 inch. Tạo hàng in riêng với 2inch cut = Enable và đặt DNP_STRIP_PRINTER_NAME.",
-        );
+        // Khung nhỏ: tờ 1200 × 1800 (2 dải) in với "2inch cut" bật cho riêng lệnh này → máy cắt đôi.
+        // Khung to: tắt cắt, in nguyên tờ. Không cần hàng in thứ hai; có DNP_STRIP_PRINTER_NAME thì dùng.
+        const strip = job.printSize === "strip";
+        const printerName = strip ? config.dnpStripPrinter || config.dnpPrinter : config.dnpPrinter;
         await PrintJob.updateOne(
           { _id: job._id },
           {
@@ -56,6 +55,8 @@ export function dispatchPrint(job) {
               printerName,
               "-Manifest",
               manifest,
+              "-Cut",
+              strip ? "on" : "off",
             ],
             { windowsHide: true },
           );
