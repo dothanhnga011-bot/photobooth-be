@@ -122,7 +122,7 @@ publicRouter.get("/studio/qr", async (req, res) => {
 });
 publicRouter.get("/catalog", async (req, res) => {
   // Every page load asks for the catalog; it changes only when an admin edits it (cache cleared).
-  res.json(await catalogCache.get("catalog", buildCatalog));
+  res.json({ ...await catalogCache.get("catalog", buildCatalog), printCapabilities: { dnpSheetScale: 2 } });
 });
 async function buildCatalog() {
   const [rooms, packages, frames, setting, stickers, screens] = await Promise.all([

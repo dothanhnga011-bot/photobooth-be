@@ -86,6 +86,27 @@ test("mixed new PNG and legacy JPEG sheets download with the correct extensions 
   }
 });
 
+test("600 ppi automatic sheets retain original bytes through binary upload, download and retry", async () => {
+  const catalog = await request(app).get('/api/catalog').expect(200);
+  assert.equal(catalog.body.printCapabilities.dnpSheetScale, 2);
+  const b = await booking(), key = randomUUID();
+  const high = await sharp(png).resize(2400, 3600).png().toBuffer();
+  const send = () => request(app).post(`/api/albums/${b.accessToken}/print-pack`)
+    .set('Content-Type', 'application/octet-stream')
+    .set('X-Print-Key', key).set('X-Print-Frame', 'HQ')
+    .set('X-Print-Sheets', String(high.length)).send(high);
+  const first = await send().expect(201);
+  assert.deepEqual([first.body.width, first.body.height], [2400, 3600]);
+  const image = await request(app).get(`/api/albums/${b.accessToken}/prints/${first.body._id}?download=1`)
+    .expect(200).expect('Content-Type', /image\/png/);
+  assert.deepEqual(image.body, high);
+  assert.equal((await send().expect(200)).body._id, first.body._id);
+  assert.equal((await Booking.findById(b._id)).printSheets, 1);
+  const landscape = await sharp(high).rotate(90).png().toBuffer();
+  assert.deepEqual(await validatePrintImage(landscape, 'image/png'), { width: 3600, height: 2400, extension: 'png' });
+  await assert.rejects(validatePrintImage(high, 'image/png', 'instax'), /Instax Wide/);
+});
+
 test("old jobs without a sheets array still return original JPEG files", async () => {
   const b = await booking();
   await saveMedia("legacy-print-quality.jpg", jpeg, "image/jpeg");

@@ -8,7 +8,7 @@ export const printContentType = (file) => printExtension(file) === "png" ? "imag
 // An Instax Wide print is one landscape 1260 × 840 px image, the Link WIDE's own size. Prints
 // queued by kiosks before the switch from Instax mini (600 × 800) are still taken: the bridge turns them.
 export async function validatePrintImage(buffer, contentType, printSize = "full") {
-  const input = sharp(buffer, { failOn: "warning", limitInputPixels: 5_000_000 });
+  const input = sharp(buffer, { failOn: "warning", limitInputPixels: 9_000_000 });
   const metadata = await input.metadata();
   const { width, height, format } = metadata;
   if ((format !== "png" && format !== "jpeg") ||
@@ -20,8 +20,8 @@ export async function validatePrintImage(buffer, contentType, printSize = "full"
   if (printSize === "instax") {
     if (!((width === 1260 && height === 840) || (width === 600 && height === 800)))
       throw new Error("Tấm Instax Wide phải là ảnh ngang 1260 × 840 px.");
-  } else if (!((short === 1200 && long === 1800) || (short === 1181 && long === 1772)))
-    throw new Error("Tờ ảnh phải là 1200 × 1800 px hoặc 1181 × 1772 px (dọc hoặc ngang).");
+  } else if (!((short === 1200 && long === 1800) || (short === 1181 && long === 1772) || (short === 2400 && long === 3600)))
+    throw new Error("Tờ ảnh phải là 1200 × 1800 px, 1181 × 1772 px hoặc 2400 × 3600 px (dọc hoặc ngang).");
   // Reading just metadata accepts a valid header with missing/corrupt pixel data.
   await input.raw().toBuffer();
   return { width, height, extension: format === "png" ? "png" : "jpg" };

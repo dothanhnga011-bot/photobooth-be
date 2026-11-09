@@ -12,7 +12,7 @@ const MAX_SHEETS = 100;
 // Khổ của khung được in (máy chụp gửi kèm): "strip" = tờ 2 dải, máy DNP cắt đôi; "full" = in nguyên
 // tờ. Không gửi (trang cũ) thì theo khổ của gói. Instax luôn theo gói (máy in riêng).
 const SHEET_SIZE = z.enum(["full", "strip"]).optional();
-const MAX_SHEET_BYTES = 9_000_000; // the JSON limit: 12 M base64 characters
+const MAX_SHEET_BYTES = 36_000_000; // binary 600 ppi PNG; legacy JSON retains its 12 M character limit
 const BASE64_CHUNK = 3 * 64 * 1024; // whole 3-byte groups, so chunked base64 joins up exactly
 
 const sheetType = (buffer) =>
