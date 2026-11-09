@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import mongoose from "mongoose";
 import sharp from "sharp";
+import jwt from "jsonwebtoken";
 import request from "supertest";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { app } from "../src/app.js";
 import { config } from "../src/config.js";
-import { Booking, PrintJob } from "../src/models/index.js";
+import { Booking, PrintJob, Room } from "../src/models/index.js";
 import { readMedia, saveMedia } from "../src/services/media.js";
 import { validatePrintImage } from "../src/services/print-image.js";
 
@@ -105,6 +106,33 @@ test("600 ppi automatic sheets retain original bytes through binary upload, down
   const landscape = await sharp(high).rotate(90).png().toBuffer();
   assert.deepEqual(await validatePrintImage(landscape, 'image/png'), { width: 3600, height: 2400, extension: 'png' });
   await assert.rejects(validatePrintImage(high, 'image/png', 'instax'), /Instax Wide/);
+});
+
+test("direct room printing is scoped, leased immediately, never cloud-queued, and never replayed physically", async () => {
+  const room = await Room.create({ name: 'Direct room', branch: 'A', active: true });
+  const b = await booking();
+  b.room = room._id; b.branch = 'A'; await b.save();
+  const auth = jwt.sign({ type: 'print-agent', room: String(room._id), branch: 'A' }, config.secret);
+  const key = randomUUID();
+  const send = (token = auth) => request(app).post(`/api/print-agent/direct/${b.accessToken}`)
+    .set('Authorization', `Bearer ${token}`).set('Content-Type', 'application/octet-stream')
+    .set('X-Print-Key', key).set('X-Print-Frame', 'Local').set('X-Print-Sheets', String(png.length)).send(png);
+  const other = jwt.sign({ type: 'print-agent', room: new mongoose.Types.ObjectId().toString(), branch: 'A' }, config.secret);
+  await send(other).expect(403);
+  assert.equal((await Booking.findById(b._id)).printSheets, 0);
+  const first = await send().expect(201);
+  assert.equal(first.body.spoolStatus, 'sending');
+  assert.equal(first.body.direct.fresh, true);
+  assert.ok(first.body.direct.job.leaseId);
+  assert.equal((await send().expect(200)).body.direct.fresh, false);
+  assert.equal((await Booking.findById(b._id)).printSheets, 1);
+  const claim = await request(app).post('/api/print-agent/claim').set('Authorization', `Bearer ${auth}`).send({}).expect(200);
+  assert.equal(claim.body.job, null, 'cloud polling cannot take this direct job');
+  await request(app).post(`/api/print-agent/jobs/${first.body._id}/complete`).set('Authorization', `Bearer ${auth}`)
+    .send({ leaseId: first.body.direct.job.leaseId, sent: true, message: 'Local spool accepted' }).expect(200);
+  const replay = await send().expect(200);
+  assert.equal(replay.body.spoolStatus, 'sent');
+  assert.equal(replay.body.direct.fresh, false);
 });
 
 test("old jobs without a sheets array still return original JPEG files", async () => {

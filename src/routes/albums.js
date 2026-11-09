@@ -1,5 +1,6 @@
 import { Router } from "express";
 import mongoose from "mongoose";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { mediaReference } from "../services/r2.js";
 import { Booking, PrintJob } from "../models/index.js";
@@ -214,9 +215,12 @@ albumsRouter.get("/:token/prints/:job", async (req, res) => {
   }
   await sendMedia(req, res, file, printContentType(file), expiresAt);
 });
-albumsRouter.post("/:token/print-pack", printLimit, printBody, async (req, res) => {
+export async function submitPrintPack(req, res) {
   const d = readPrintPack(req);
   const b = await album(req);
+  const direct = req.directPrintScope;
+  if (direct && (String(b.room) !== direct.room || b.printSize === "instax"))
+    fail(403, "Máy in cục bộ không thuộc phòng của đơn này.");
   const { fingerprint } = d;
   const verifyReplay = (job) => {
     // Keep legacy jobs replayable; newly created jobs always have a fingerprint.
@@ -236,7 +240,7 @@ albumsRouter.post("/:token/print-pack", printLimit, printBody, async (req, res) 
     printSheets: booking.printSheets || 0,
   });
   if (existing)
-    return res.json({ ...publicJob(verifyReplay(existing)), ...quota(b) });
+    return res.json({ ...publicJob(verifyReplay(existing)), ...quota(b), ...(direct && { direct: { fresh: false } }) });
   requireMedia(b);
   const n = d.sheets.length;
   const reserved = await reserveSheets(b, n, d.frameName);
@@ -280,11 +284,16 @@ albumsRouter.post("/:token/print-pack", printLimit, printBody, async (req, res) 
       height: sheets[0].height,
       requestKey: d.requestKey,
       requestFingerprint: fingerprint,
-      spoolStatus: await initialSpoolStatus(b.room),
+      spoolStatus: direct ? "sending" : await initialSpoolStatus(b.room),
+      ...(direct && { spoolLeaseId: randomUUID(), spoolLeaseUntil: new Date(Date.now() + 5 * 60_000),
+        spoolMessage: "Máy chụp đang gửi trực tiếp tới RX1." }),
     });
-    dispatchPrint(job);
+    if (!direct) dispatchPrint(job);
     printEvents.emit("print", { ...publicJob(job, req.params.token), branch: b.branch });
-    res.status(201).json({ ...publicJob(job), ...quota(reserved) });
+    res.status(201).json({ ...publicJob(job), ...quota(reserved), ...(direct && { direct: { fresh: true, job: {
+      id: job._id, leaseId: job.spoolLeaseId, code: job.code, printSize: job.printSize, copies: 1,
+      sheets: job.sheets.map((s, index) => ({ index, extension: printExtension(s.file) })),
+    } } }) });
   } catch (e) {
     await Promise.allSettled(saves); // remove only after every upload has finished
     await deleteMedia(files).catch(() => {});
@@ -298,11 +307,13 @@ albumsRouter.post("/:token/print-pack", printLimit, printBody, async (req, res) 
         return res.json({
           ...publicJob(verifyReplay(previous)),
           ...quota(await Booking.findById(b._id)),
+          ...(direct && { direct: { fresh: false } }),
         });
     }
     throw e;
   }
-});
+}
+albumsRouter.post("/:token/print-pack", printLimit, printBody, submitPrintPack);
 
 // The booth uploads a camera original straight to storage: one short-lived URL for one photo.
 albumsRouter.post("/:token/photos/upload-url", async (req, res) => {
