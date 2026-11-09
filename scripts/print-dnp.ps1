@@ -66,6 +66,50 @@ if ($Cut -ne 'keep') {
   } catch { Write-Output "CUT:unsupported $($_.Exception.Message)" }
 }
 
+# Output compensation belongs to the printer only; camera files and QR downloads stay untouched.
+function Get-Rx1OutputSettings([string]$settingsPath = (Join-Path $env:LOCALAPPDATA 'NXC-Printer\rx1-output.json')) {
+  $defaults = @{ gamma = 1.07; maxResolution = $true; warning = '' }
+  if (-not (Test-Path -LiteralPath $settingsPath)) { return $defaults }
+  try {
+    $profile = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $gammaValue = 1.07
+    $maximum = $true
+    if ($null -ne $profile.PSObject.Properties['gamma']) {
+      if ($profile.gamma -is [bool]) { throw 'gamma must be a number' }
+      $gammaValue = [double]$profile.gamma
+    }
+    if ([double]::IsNaN($gammaValue) -or [double]::IsInfinity($gammaValue) -or $gammaValue -lt 0.85 -or $gammaValue -gt 1.25) { throw 'gamma must be between 0.85 and 1.25' }
+    if ($null -ne $profile.PSObject.Properties['maxResolution']) {
+      if ($profile.maxResolution -isnot [bool]) { throw 'maxResolution must be true or false' }
+      $maximum = $profile.maxResolution
+    }
+    return @{ gamma = $gammaValue; maxResolution = $maximum; warning = '' }
+  } catch {
+    $defaults.warning = "Invalid rx1-output.json; using gamma 1.07 and maximum supported DPI: $($_.Exception.Message)"
+    return $defaults
+  }
+}
+function Set-Rx1MaximumResolution($settings, $page) {
+  # Use only positive DPI pairs advertised by this driver; never invent a 600 DPI mode.
+  $current = $page.PrinterResolution
+  try {
+    $best = @($settings.PrinterResolutions | Where-Object { $_.X -gt 0 -and $_.Y -gt 0 } |
+      Sort-Object @{ Expression = { [long]$_.X * $_.Y }; Descending = $true }, @{ Expression = { $_.X }; Descending = $true } |
+      Select-Object -First 1)
+    if ($best.Count -and ([long]$best[0].X * $best[0].Y -gt [long]$current.X * $current.Y -or $current.X -le 0 -or $current.Y -le 0)) {
+      $page.PrinterResolution = $best[0]
+    }
+  } catch { $page.PrinterResolution = $current }
+}
+function New-Rx1ImageAttributes([double]$gamma) {
+  $attributes = New-Object System.Drawing.Imaging.ImageAttributes
+  $attributes.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
+  # Gamma > 1 darkens midtones while pure white/black stay white/black.
+  # Apply exactly once at DrawImage, before Windows/driver ICM.
+  if ([Math]::Abs($gamma - 1.0) -gt 0.00001) { $attributes.SetGamma([single]$gamma) }
+  return $attributes
+}
+
 # DNP DS-RX1: giấy PR (4x6) = 4 x 6 inch (400 x 600 phần trăm inch); driver có thể khai báo dọc hoặc ngang.
 # Khổ 4x6 có thể lớn hơn một chút vì phần tràn lề (DNP: vd. 4,13 x 6,15 inch); không thấy thì dùng khổ
 # đang đặt sẵn của hàng in (driver DNP mặc định 4x6) thay vì bỏ lệnh in.
@@ -78,6 +122,10 @@ $paper = @($document.PrinterSettings.PaperSizes | Where-Object {
 if ($paper) { $document.DefaultPageSettings.PaperSize = $paper }
 $document.DefaultPageSettings.Landscape = $false
 $document.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0,0,0,0)
+$outputSettings = Get-Rx1OutputSettings
+if ($outputSettings.warning) { Write-Output $outputSettings.warning }
+if ($outputSettings.maxResolution) { Set-Rx1MaximumResolution $document.PrinterSettings $document.DefaultPageSettings }
+$script:printGamma = $outputSettings.gamma
 $script:pageIndex = 0
 $document.add_PrintPage({
   param($sender, $event)
@@ -96,8 +144,7 @@ $document.add_PrintPage({
     $scale = [Math]::Max($b.Width / $photo.Width, $b.Height / $photo.Height)
     $w = $photo.Width * $scale; $h = $photo.Height * $scale
     $dest = New-Object System.Drawing.Rectangle([int][Math]::Round($b.X + ($b.Width - $w) / 2)), ([int][Math]::Round($b.Y + ($b.Height - $h) / 2)), ([int][Math]::Ceiling($w)), ([int][Math]::Ceiling($h))
-    $attrs = New-Object System.Drawing.Imaging.ImageAttributes
-    $attrs.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
+    $attrs = New-Rx1ImageAttributes $script:printGamma
     try { $g.DrawImage($photo, $dest, 0, 0, $photo.Width, $photo.Height, [System.Drawing.GraphicsUnit]::Pixel, $attrs) }
     finally { $attrs.Dispose() }
   } finally { $photo.Dispose() }
