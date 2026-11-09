@@ -61,6 +61,8 @@ const bookingSchema = new Schema(
         originalFile: String,
         thumbnailFile: String,
         previewFile: String,
+        // Guest JPEG: upright, always mirrored from the camera source, at most 20 MP.
+        downloadFile: String,
         // Nguồn in 3000 px (đã xoay, lật như ảnh xem trước) — nhẹ hơn ảnh gốc 26 MP nhiều lần.
         printFile: String,
         originalName: String,

@@ -106,14 +106,14 @@ export function photoFile(p, size) {
 // print composition load straight from R2 instead of one server round trip (a 302 or a JSON link)
 // per image. They are the very URLs /photos/:id?size=…&direct=1 redirects to in the same window,
 // so either path reuses the other's cached bytes. Album polls in one window revalidate to an
-// empty 304, so carrying all four costs a few KB only when the window changes.
+// empty 304, so carrying the links costs a few KB only when the window changes.
 // Legacy GridFS photos and photos about to expire get no links.
-const LINKED_SIZES = ["thumbnail", "preview", "print", "original"];
+const LINKED_SIZES = ["thumbnail", "preview", "print", "original", "download"];
 export async function photoLinks(p, now = Date.now()) {
   if (!p || !isR2File(p.file)) return undefined;
   const files = Object.fromEntries(LINKED_SIZES
-    .filter((size) => size !== "print" || p.printFile)
-    .map((size) => [size, photoFile(p, size)]));
+    .filter((size) => (size !== "print" || p.printFile) && (size !== "download" || p.downloadFile))
+    .map((size) => [size, size === "download" ? p.downloadFile : photoFile(p, size)]));
   return mediaLinks(files, photoExpiry(p), "image/jpeg", now);
 }
 
@@ -273,7 +273,7 @@ export async function purgeExpiredMedia(now = new Date()) {
     changed++;
     await deleteMedia([
       ...old.flatMap((p) =>
-        [p.file, p.originalFile, p.thumbnailFile, p.previewFile, p.printFile].filter(Boolean),
+        [p.file, p.originalFile, p.thumbnailFile, p.previewFile, p.printFile, p.downloadFile].filter(Boolean),
       ),
       ...video,
     ]);

@@ -20,6 +20,7 @@ import {
 } from "../src/services/media.js";
 import { getStorageSummary } from "../src/services/media-storage.js";
 import { whenPrintSourcesIdle } from "../src/services/print-source.js";
+import { purgeStaleOrphans } from "../src/services/orphans.js";
 import {
   r2Storage,
   invalidateR2Inventory,
@@ -365,6 +366,35 @@ after(async () => {
   mock.restoreAll();
   await mongoose.disconnect();
   await memory?.stop();
+});
+
+test("guest downloads prepare one mirrored R2 file, sign that file and protect it from orphan cleanup", async () => {
+  enableR2();
+  const source = await sharp({ create: { width: 120, height: 80, channels: 3, background: "#ed1923" } })
+    .composite([{ input: { create: { width: 60, height: 80, channels: 3, background: "#1e32e1" } }, left: 60, top: 0 }])
+    .jpeg({ quality: 96 }).toBuffer();
+  const file = await saveMedia("camera-guest.jpg", source, "image/jpeg");
+  const b = await Booking.create({ code: randomUUID(), accessToken: randomUUID(), status: "completed",
+    photos: [{ file, kind: "original", number: 1 }] });
+  const url = `/api/albums/${b.accessToken}/photos/${b.photos[0]._id}?download=1`;
+  const first = await request(app).get(url).expect(200);
+  const saved = (await Booking.findById(b._id)).photos[0];
+  assert.notEqual(saved.downloadFile, file);
+  const px = await sharp(first.body).resize(2, 1).raw().toBuffer();
+  assert.ok(px[2] > px[0], "guest file is mirrored");
+  assert.deepEqual(await readMedia(file), source, "camera source is unchanged");
+  calls = [];
+  const second = await request(app).get(url + "&direct=1").expect(302);
+  const album = await request(app).get(`/api/albums/${b.accessToken}`).expect(200);
+  const links = album.body.photos[0].links;
+  assert.ok(second.headers.location.includes(saved.downloadFile.slice(3)));
+  assert.ok(links.download.includes(saved.downloadFile.slice(3)));
+  assert.ok(links.original.includes(file.slice(3)));
+  assert.deepEqual(calls, [], "cached downloads and album links do not relay or re-encode image bytes");
+  const guest = objects.get(saved.downloadFile.slice(3));
+  guest.modified = Date.now() - MEDIA_TTL_MS - 3 * 3600000;
+  assert.equal(await purgeStaleOrphans(), 0, "referenced guest file survives orphan cleanup");
+  assert.ok(objects.has(saved.downloadFile.slice(3)));
 });
 
 test("R2 requires complete configuration and never silently stores failed R2 writes in MongoDB", async () => {
@@ -831,7 +861,7 @@ test("print sheets store R2 refs and retain 10x15 dimensions and 300dpi for down
   enableR2();
   const photo = await saveMedia(
     "original.jpg",
-    Buffer.from("album photo"),
+    await sharp({ create: { width: 80, height: 60, channels: 3, background: "#925341" } }).jpeg().toBuffer(),
     "image/jpeg",
   );
   const b = await Booking.create({

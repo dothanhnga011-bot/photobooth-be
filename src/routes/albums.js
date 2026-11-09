@@ -17,6 +17,7 @@ import {
   MEDIA_TTL_MS,
 } from "../services/media.js";
 import { sendZip } from "../services/zip.js";
+import { photoDownloadFile } from "../services/photo-download.js";
 import { sheetPreview } from "../services/preview.js";
 import { printEvents } from "../services/print-events.js";
 import { dispatchPrint } from "../services/dnp.js";
@@ -74,6 +75,7 @@ albumsRouter.get("/:token/photos/:photo", async (req, res) => {
   // for every image multiplies database transfer and document hydration by N².
   const photoId = id.safeParse(req.params.photo);
   const b = await album(req, {
+    code: 1,
     status: 1,
     captureEndsAt: 1,
     photos: {
@@ -96,7 +98,11 @@ albumsRouter.get("/:token/photos/:photo", async (req, res) => {
         ),
       ),
   );
-  await sendMedia(req, res, photoFile(p, req.query.size), "image/jpeg", photoExpiry(p));
+  const download = req.query.download === "1";
+  if (download) res.set("Cache-Control", "private, no-store");
+  const file = download ? await photoDownloadFile(b._id, p) : photoFile(p, req.query.size);
+  if (download) res.attachment(`NXC-${b.code}-${p.number ? String(p.number).padStart(2, "0") : p._id}.jpg`);
+  await sendMedia(req, res, file, "image/jpeg", photoExpiry(p));
 });
 // Video tua nhanh của lượt chụp: xem trong album (hỗ trợ tua) hoặc tải về (?download=1).
 albumsRouter.get("/:token/video", async (req, res) => {
@@ -126,15 +132,23 @@ albumsRouter.get("/:token/download", async (req, res) => {
   const photos = originals(b).filter(
     (p) => photoExpiry(p).getTime() > Date.now(),
   );
+  if (photos.some((p) => p.originalPending))
+    fail(409, "Ảnh gốc đang tải lên. Vui lòng chờ rồi lưu album lại.");
+  async function* downloads() {
+    for (const [i, p] of photos.entries()) {
+      try {
+        const file = await photoDownloadFile(b._id, p);
+        const data = await readMedia(file);
+        if (data) yield { name: `NXC-${b.code}-${String(i + 1).padStart(2, "0")}.jpg`, data };
+      } catch (error) {
+        if (error.status !== 404) throw error;
+      }
+    }
+  }
   const sent = await sendZip(
     res,
     `NXC-${b.code}-anh-goc.zip`,
-    readFiles(
-      photos.map((p, i) => ({
-        name: `NXC-${b.code}-${String(i + 1).padStart(2, "0")}.jpg`,
-        file: p.file,
-      })),
-    ),
+    downloads(),
   );
   if (!sent) fail(404, "Ảnh đã hết hạn lưu trữ.");
 });

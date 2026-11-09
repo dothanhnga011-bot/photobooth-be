@@ -150,7 +150,7 @@ export async function getStorageSummary({
         ],
       })
         .select(
-          "photos._id photos.file photos.originalFile photos.thumbnailFile photos.previewFile photos.printFile video.file mediaExpiresAt",
+          "photos._id photos.file photos.originalFile photos.thumbnailFile photos.previewFile photos.printFile photos.downloadFile video.file mediaExpiresAt",
         )
         .lean(),
       PrintJob.find().select("file sheets.file createdAt").lean(),
@@ -186,7 +186,7 @@ export async function getStorageSummary({
     const hasFreshPhotos = photos.some((photo) => photoTime(photo) > cutoff);
     addNames(
       names.photos,
-      photos.map((photo) => photo.file),
+      photos.flatMap((photo) => [photo.file, photo.downloadFile]),
     );
     addNames(
       names.originals,
@@ -199,7 +199,7 @@ export async function getStorageSummary({
     // Hidden/deleted album photos still occupy storage until TTL cleanup.
     for (const photo of photos)
       addImageExpiry(
-        [photo.file, photo.originalFile, photo.thumbnailFile, photo.previewFile, photo.printFile],
+        [photo.file, photo.originalFile, photo.thumbnailFile, photo.previewFile, photo.printFile, photo.downloadFile],
         photoTime(photo) + MEDIA_TTL_MS,
       );
     addNames(names.videos, [booking.video?.file]);
@@ -212,6 +212,7 @@ export async function getStorageSummary({
         photo.thumbnailFile,
         photo.previewFile,
         photo.printFile,
+        photo.downloadFile,
       ]),
     );
     // Match purgeExpiredMedia: an old photo also makes a video-only remainder

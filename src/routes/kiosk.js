@@ -457,7 +457,7 @@ kioskRouter.post("/video", videoBody, async (req, res) => {
 });
 // Ảnh đã ghép khung của lượt chụp (máy chụp ghép bản chất lượng in sau khi khách chọn khung): gửi
 // một lần, gửi lại thì thay ảnh cũ. Kèm bản xem nhanh 720 px cho album.
-const compositeBody = express.raw({ type: ["image/jpeg"], limit: "20mb", inflate: false });
+const compositeBody = express.raw({ type: ["image/jpeg"], limit: "40mb", inflate: false });
 kioskRouter.post("/composite", compositeBody, async (req, res) => {
   if (!Buffer.isBuffer(req.body) || !req.body.length) fail(400, "Ảnh ghép trống.");
   const { b } = await captureBooking(z.string().parse(req.get("X-Capture-Token")), { authOnly: true });
@@ -468,8 +468,9 @@ kioskRouter.post("/composite", compositeBody, async (req, res) => {
     frameName = "";
   }
   const meta = await sharp(req.body, { limitInputPixels: 40_000_000 }).metadata().catch(() => null);
-  if (meta?.format !== "jpeg" || !meta.width || !meta.height || Math.max(meta.width, meta.height) > 6000)
-    fail(400, "Ảnh ghép phải là JPEG (tối đa 6000 px).");
+  if (meta?.format !== "jpeg" || !meta.width || !meta.height || Math.max(meta.width, meta.height) > 9000 ||
+    meta.width * meta.height > 20_000_000)
+    fail(400, "Ảnh ghép phải là JPEG (tối đa 20 MP và 9000 px mỗi cạnh).");
   const thumbnail = await sharp(req.body)
     .resize({ width: 720, height: 720, fit: "inside", withoutEnlargement: true })
     .jpeg({ quality: 84, mozjpeg: true })

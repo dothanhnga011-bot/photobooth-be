@@ -9,7 +9,7 @@ import { releaseSheets } from "../routes/print-helpers.js";
 // stored until the TTL cleanup), the kiosk's framed composite, the timelapse video, and the
 // sheets of their print jobs.
 const photoFiles = (photo) =>
-  [photo.file, photo.originalFile, photo.thumbnailFile, photo.previewFile, photo.printFile];
+  [photo.file, photo.originalFile, photo.thumbnailFile, photo.previewFile, photo.printFile, photo.downloadFile];
 const jobFiles = (job) => [job.file, ...(job.sheets || []).map((sheet) => sheet.file)];
 function bookingFiles(booking, jobs) {
   return [...new Set([
@@ -32,7 +32,7 @@ export async function listCustomerMedia({ db = mongoose.connection.db } = {}) {
       { "composite.file": { $exists: true } },
     ] })
       .select("code name phone status createdAt photos._id photos.deleted photos.file photos.originalFile " +
-        "photos.thumbnailFile photos.previewFile photos.printFile video.file composite.file composite.thumbnailFile")
+        "photos.thumbnailFile photos.previewFile photos.printFile photos.downloadFile video.file composite.file composite.thumbnailFile")
       .lean(),
     PrintJob.find().select("booking status file sheets.file").lean(),
   ]);

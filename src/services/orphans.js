@@ -11,14 +11,14 @@ async function referencedMedia() {
       { "video.file": { $exists: true } },
       { "composite.file": { $exists: true } },
     ] })
-      .select("photos.file photos.originalFile photos.thumbnailFile photos.previewFile photos.printFile video.file composite.file composite.thumbnailFile")
+      .select("photos.file photos.originalFile photos.thumbnailFile photos.previewFile photos.printFile photos.downloadFile video.file composite.file composite.thumbnailFile")
       .lean(),
     PrintJob.find().select("file sheets.file").lean(),
   ]);
   const names = new Set();
   for (const b of bookings) {
     for (const p of b.photos || [])
-      for (const f of [p.file, p.originalFile, p.thumbnailFile, p.previewFile, p.printFile]) if (f) names.add(f);
+      for (const f of [p.file, p.originalFile, p.thumbnailFile, p.previewFile, p.printFile, p.downloadFile]) if (f) names.add(f);
     if (b.video?.file) names.add(b.video.file);
     for (const f of [b.composite?.file, b.composite?.thumbnailFile]) if (f) names.add(f);
   }

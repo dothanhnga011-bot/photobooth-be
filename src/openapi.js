@@ -274,6 +274,7 @@ export const openapi = {
             preview: str("Link R2 ký sẵn của ảnh xem khi chỉnh"),
             print: str("Link R2 ký sẵn của nguồn in 3000 px (chỉ khi printSource)"),
             original: str("Link R2 ký sẵn của ảnh gốc máy ảnh"),
+            download: str("Link R2 ký sẵn của bản cho khách (đã lật như gương, tối đa 20 MP), khi đã được tạo"),
             until: str("Link hết hạn lúc này (tối đa 5 phút)", { format: "date-time" }),
           }),
           description:
@@ -1131,7 +1132,7 @@ export const openapi = {
         tags: ["Máy chụp (kiosk)"],
         summary: "Gửi ảnh đã ghép khung của lượt chụp vào album (thay ảnh cũ nếu gửi lại)",
         description:
-          "Thân là ảnh image/jpeg (≤ 20 MB, cạnh dài ≤ 6000 px) — bản chất lượng in máy chụp ghép sau khi khách chọn khung; " +
+          "Thân là ảnh image/jpeg (≤ 40 MB, ≤ 20 MP, cạnh dài ≤ 9000 px) — bản khoảng 20 MP máy chụp ghép sau khi khách chọn khung; " +
           "khách xem / tải ở /api/albums/{token}/composite kể cả khi gói không kèm tờ in. Header X-Capture-Token là mã phiên " +
           "chụp, X-Frame-Name (tùy chọn, encodeURIComponent) là tên chủ đề / khung (tính vào xếp hạng chủ đề).",
         parameters: [
@@ -1318,10 +1319,12 @@ export const openapi = {
     "/api/albums/{token}/photos/{photo}": {
       get: {
         tags: ["Album khách"],
-        summary: "Tải một ảnh (JPEG)",
+        summary: "Đọc ảnh nguồn hoặc tải ảnh JPEG đã lật như gương, tối đa 20 MP",
+        description: "download=1 tạo hoặc dùng lại bản JPEG cho khách. Ảnh gốc đang tải lên trả 409; mặc định vẫn trả nguồn máy ảnh cho chỉnh/in.",
         parameters: [
           tokenParam,
           pathParam("photo", "Mã ảnh"),
+          query("download", "1 = bản cho khách: lật như gương, tối đa 20 MP; không phóng lớn ảnh nguồn nhỏ", { type: "string", enum: ["1"] }),
           query(
             "size",
             "thumbnail: ảnh nhỏ thư viện (640 px); preview: ảnh xem khi chỉnh (1600 px); print: nguồn in 3000 px, màu đầy đủ 4:4:4 (ảnh có printSource); mặc định: ảnh gốc của máy ảnh. Ảnh cũ thiếu bản nào thì trả ảnh gốc.",
@@ -1362,7 +1365,7 @@ export const openapi = {
     "/api/albums/{token}/download": {
       get: {
         tags: ["Album khách"],
-        summary: "Tải tất cả ảnh gốc (ZIP)",
+        summary: "Tải tất cả ảnh gốc cho khách (ZIP): lật như gương, tối đa 20 MP mỗi ảnh",
         parameters: [tokenParam],
         responses: {
           200: {

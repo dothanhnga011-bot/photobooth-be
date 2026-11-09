@@ -94,7 +94,13 @@ theo CPU thật được cấp (`SHARP_CONCURRENCY` để ghi đè); mỗi lần
 (tab Network của trình duyệt) để biết ảnh lưu mất bao lâu. JPEG sạch được lưu **nguyên byte**;
 JPEG có metadata được bỏ thông tin riêng tư, giữ nguyên dữ liệu pixel, ICC và thẻ EXIF
 orientation tối thiểu. PNG/WebP/CMYK được chuyển một lần sang JPEG 100 / 4:4:4.
-Tệp cụt/hỏng bị từ chối (400). Xem/chỉnh vị trí dùng bản nhẹ; tải ảnh về luôn là ảnh gốc.
+Tệp cụt/hỏng bị từ chối (400). Xem/chỉnh vị trí dùng bản nhẹ. Khách tải qua QR dùng
+`GET /api/albums/:token/photos/:photo?download=1`: JPEG lật như gương, đúng chiều EXIF,
+tối đa 20 triệu điểm ảnh (ảnh nhỏ giữ kích thước nguồn), chất lượng 95 / 4:4:4 và profile sRGB.
+Tải ZIP dùng cùng bản này; file tải về được tạo một lần, lưu `photos.downloadFile` rồi tải thẳng từ R2.
+Ảnh gốc còn đang tải lên trả 409 thay vì giao bản xem trước. Endpoint không có `download=1`
+vẫn trả nguồn máy ảnh để chỉnh/in. File tải về được tính dung lượng và dọn cùng ảnh nguồn.
+Ảnh ghép khung của lượt chụp mới được dựng trực tiếp ở khoảng 20 MP cho album.
 Tạo tờ in đọc nguồn in 3000 px (ô khung trên tờ 1200 × 1800 chỉ cần dưới ~900 px nên bản in
 không khác), chỉ đọc ảnh gốc khi một ô phóng to vượt số điểm ảnh của nguồn in — không bao giờ
 phóng ảnh lên. Ảnh cũ chưa có nguồn in vẫn in từ ảnh gốc. Tờ in (PNG, không nén mất) được gửi
