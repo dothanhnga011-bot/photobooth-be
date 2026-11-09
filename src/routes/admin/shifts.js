@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { Booking, Room, Shift } from "../../models/index.js";
-import { allow, can, requireBranch, staffBranch } from "../../middleware/auth.js";
+import { allow, requireBranch, staffBranch } from "../../middleware/auth.js";
 import { fail, id, today } from "../validation.js";
 
 const cash = z.number({ error: "Vui lòng nhập số tiền." }).int().min(0).max(1_000_000_000);

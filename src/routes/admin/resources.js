@@ -101,7 +101,7 @@ const resources = {
             ? "khổ nhỏ kèm ít nhất 1 tờ 10 × 15 (cắt đôi = 2 tờ nhỏ)"
             : "khổ to kèm ít nhất 2 tờ",
         });
-    // Layout Polaroid (khổ Instax): luôn in 1 tấm; máy tự chụp đủ `shots` tấm (mặc định 8).
+    // Layout Polaroid (khổ Instax): luôn in 1 tấm; tối đa `shots` lần bấm dây (mặc định 8).
     }).transform((pack) => (pack.printSize === "instax" ? { ...pack, prints: INSTAX_SHEETS, shots: pack.shots || 8 } : pack)),
   ],
   frames: [

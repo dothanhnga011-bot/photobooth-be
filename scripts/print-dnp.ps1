@@ -81,7 +81,7 @@ $document.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margi
 $script:pageIndex = 0
 $document.add_PrintPage({
   param($sender, $event)
-  $photo = [System.Drawing.Image]::FromFile($pages[$script:pageIndex])
+  $photo = [System.Drawing.Image]::FromFile($pages[$script:pageIndex], $true)
   try {
     # Tờ khác chiều với trang của máy in (vd. tờ ngang 15 x 10 trên trang dọc) thì xoay 90 độ cho kín khổ.
     $pageLandscape = $event.PageBounds.Width -gt $event.PageBounds.Height

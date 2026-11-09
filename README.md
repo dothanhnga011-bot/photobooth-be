@@ -68,7 +68,7 @@ Trang Swagger chạy cùng địa chỉ với máy chủ nên được phép g�
 - Lễ tân vào **Phòng & chi nhánh** để xem phòng đang hoạt động và mở/cài kiosk: `GET /api/admin/rooms`
   và `POST /api/admin/rooms/:id/device` cần đăng nhập, cho phép `staff` và `admin`. Quản trị thấy cả phòng đã tắt;
   phòng đã tắt không được cấp mã máy chụp. Tạo/sửa/tắt phòng, cài đặt studio và các danh mục khác vẫn chỉ quản trị.
-- Khách **chỉ chụp bằng nút chụp / remote của máy ảnh** (không có nút chụp trên màn hình): FUJIFILM X Acquire
+- Khách **chỉ chụp bằng nút chụp / remote của máy ảnh** (không có nút chụp trên màn hình): FUJIFILM X Acquire (Photobooth) hoặc Canon EOS Utility (Polaroid/R100)
   trên máy chụp lưu ảnh gốc vào thư mục, máy chụp (Chrome / Edge, Windows hoặc macOS) đọc thư mục rồi gửi lên
   `POST /api/kiosk/photo`. Mọi phiên mới có `captureMode: "folder"`.
 

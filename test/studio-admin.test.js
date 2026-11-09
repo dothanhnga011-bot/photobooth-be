@@ -434,7 +434,7 @@ test("packages print at least two pieces: one strip sheet cut in half, or two fu
   await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, printSize: "full", prints: 2 }).expect(200);
 });
 
-test("Instax: one print, the shots the kiosk takes by itself, its own extra price, and the kiosk sells it only while the printer is ready", async () => {
+test("Instax: one print, a shutter quota, its own extra price, and the kiosk sells it only while the printer is ready", async () => {
   const base = { name: "Gói Instax", description: "", price: 120000, duration: 5, active: true, printSize: "instax" };
   // Layout Polaroid luôn in 1 tấm, không giới hạn số lần chụp: số gửi lên (hay không gửi) đều bỏ qua.
   const saved = (await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, prints: 4, shots: 30 }).expect(200)).body;
