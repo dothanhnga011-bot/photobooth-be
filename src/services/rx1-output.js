@@ -4,7 +4,7 @@ import { catalogCache } from "./read-cache.js";
 
 export const DEFAULT_RX1_OUTPUT = { gamma: 1.5, maxResolution: true };
 export const rx1OutputSchema = z.object({
-  gamma: z.number().min(0.85).max(1.5)
+  gamma: z.number().min(1).max(2.2)
     .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-8, "Gamma dùng tối đa 2 chữ số thập phân."),
   maxResolution: z.boolean(),
 }).strict();

@@ -79,7 +79,7 @@ function Get-Rx1OutputSettings([string]$settingsPath = (Join-Path $env:LOCALAPPD
       if ($profile.gamma -is [bool]) { throw 'gamma must be a number' }
       $gammaValue = [double]$profile.gamma
     }
-    if ([double]::IsNaN($gammaValue) -or [double]::IsInfinity($gammaValue) -or $gammaValue -lt 0.85 -or $gammaValue -gt 1.50) { throw 'gamma must be between 0.85 and 1.50' }
+    if ([double]::IsNaN($gammaValue) -or [double]::IsInfinity($gammaValue) -or $gammaValue -lt 1.00 -or $gammaValue -gt 2.20) { throw 'gamma must be between 1.00 and 2.20' }
     if ($null -ne $profile.PSObject.Properties['maxResolution']) {
       if ($profile.maxResolution -isnot [bool]) { throw 'maxResolution must be true or false' }
       $maximum = $profile.maxResolution

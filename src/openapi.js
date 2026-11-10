@@ -56,7 +56,7 @@ const int = (description, extra = {}) => ({
 });
 const bool = (description) => ({ type: "boolean", description });
 const rx1Output = object({
-  gamma: { type: "number", minimum: 0.85, maximum: 1.5, multipleOf: 0.01, description: "Độ tối bản in; mặc định 1.50" },
+  gamma: { type: "number", minimum: 1, maximum: 2.2, multipleOf: 0.01, description: "Hệ số bù tối bản in (1.00–2.20); mặc định 1.50" },
   maxResolution: bool("Dùng DPI cao nhất driver hỗ trợ"),
 }, ["gamma", "maxResolution"]);
 const enumOf = (values, description) => ({

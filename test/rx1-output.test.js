@@ -52,6 +52,12 @@ test("a web save survives reload, invalidates cached configuration and preserves
   assert.deepEqual((await sync().expect(200)).body.rx1Output, { gamma: 1.4, maxResolution: false });
   await asAdmin("put").send({ gamma: 1.5, maxResolution: true }).expect(200);
   assert.deepEqual((await sync().expect(200)).body.rx1Output, { gamma: 1.5, maxResolution: true });
+  for (const gamma of [1, 1.51, 1.8, 2.2]) {
+    const settings = { gamma, maxResolution: true };
+    await asAdmin("put").send(settings).expect(200);
+    assert.deepEqual((await asAdmin("get").expect(200)).body.settings, settings);
+    assert.deepEqual((await sync(settings).expect(200)).body.rx1Output, settings);
+  }
   const studio = (await Setting.findOne({ key: "studio" })).value;
   assert.equal(studio.name, "Studio"); assert.equal(studio.extraPrintPrice, 10000);
   assert.deepEqual(studio.kiosk, { idleTitle: "Hello" });
@@ -60,7 +66,7 @@ test("a web save survives reload, invalidates cached configuration and preserves
 test("invalid values and unknown fields cannot change the last valid output", async () => {
   const valid = { gamma: 1.3, maxResolution: true };
   await asAdmin("put").send(valid).expect(200);
-  for (const patch of [{ gamma: 0.84 }, { gamma: 1.51 }, { gamma: 1.234 }, { gamma: "1.4" },
+  for (const patch of [{ gamma: 0.99 }, { gamma: 2.21 }, { gamma: 1.234 }, { gamma: "1.4" },
     { gamma: true }, { gamma: null }, { maxResolution: "yes" }, { maxResolution: null }, { printer: "another queue" }]) {
     await asAdmin("put").send({ ...valid, ...patch }).expect(400);
     assert.deepEqual(await getRx1Output(), valid);
