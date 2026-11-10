@@ -68,11 +68,11 @@ if ($Cut -ne 'keep') {
 
 # Output compensation belongs to the printer only; camera files and QR downloads stay untouched.
 function Get-Rx1OutputSettings([string]$settingsPath = (Join-Path $env:LOCALAPPDATA 'NXC-Printer\rx1-output.json')) {
-  $defaults = @{ gamma = 1.07; maxResolution = $true; warning = '' }
+  $defaults = @{ gamma = 1.15; maxResolution = $true; warning = '' }
   if (-not (Test-Path -LiteralPath $settingsPath)) { return $defaults }
   try {
     $profile = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    $gammaValue = 1.07
+    $gammaValue = $defaults.gamma
     $maximum = $true
     if ($null -ne $profile.PSObject.Properties['gamma']) {
       if ($profile.gamma -is [bool]) { throw 'gamma must be a number' }
@@ -85,7 +85,7 @@ function Get-Rx1OutputSettings([string]$settingsPath = (Join-Path $env:LOCALAPPD
     }
     return @{ gamma = $gammaValue; maxResolution = $maximum; warning = '' }
   } catch {
-    $defaults.warning = "Invalid rx1-output.json; using gamma 1.07 and maximum supported DPI: $($_.Exception.Message)"
+    $defaults.warning = "Invalid rx1-output.json; using gamma $($defaults.gamma) and maximum supported DPI: $($_.Exception.Message)"
     return $defaults
   }
 }
