@@ -605,8 +605,8 @@ test("order filters include the latest print preview and staff can reprint it", 
     total: 120000,
     prints: 2,
     photos: [
-      // Ảnh đã quá 24 giờ và ảnh đã xóa không làm ảnh đại diện.
-      { _id: new mongoose.Types.ObjectId(Math.floor((Date.now() - 2 * 86400000) / 1000)), file: "old.jpg", kind: "original" },
+      // Ảnh đã quá 3 ngày và ảnh đã xóa không làm ảnh đại diện.
+      { _id: new mongoose.Types.ObjectId(Math.floor((Date.now() - MEDIA_TTL_MS - 60000) / 1000)), file: "old.jpg", kind: "original" },
       { file: "deleted.jpg", kind: "original", deleted: true },
       { file: "cover.jpg", kind: "original" },
     ],
@@ -1247,7 +1247,7 @@ test("web app: upload, zip and multi-sheet print reach the admin queue", async (
   await Booking.deleteOne({ _id: b._id });
 });
 
-test("each print job lives 24 hours from when it was sent, then is purged with its files", async () => {
+test("each print job lives 72 hours from when it was sent, then is purged with its files", async () => {
   const hour = 3600 * 1000;
   const make = async (code, age, status = "pending") => {
     const file = `ttl-test-${code}.jpg`;
@@ -1274,9 +1274,9 @@ test("each print job lives 24 hours from when it was sent, then is purged with i
     });
     return file;
   };
-  const expired = await make("111111", 25 * hour); // gửi 25 giờ trước
-  const expiredPrinted = await make("111112", 24 * hour + 60000, "printed");
-  const fresh = await make("222222", 23 * hour); // gửi 23 giờ trước — còn 1 giờ
+  const expired = await make("111111", MEDIA_TTL_MS + hour); // expired
+  const expiredPrinted = await make("111112", MEDIA_TTL_MS + 60000, "printed");
+  const fresh = await make("222222", MEDIA_TTL_MS - hour); // one hour left
   const pending = await staff.get("/api/admin/print-jobs").expect(200);
   const printed = await staff
     .get("/api/admin/print-jobs?status=printed")
@@ -1285,15 +1285,15 @@ test("each print job lives 24 hours from when it was sent, then is purged with i
   const kept = listed.find((j) => j.code === "222222");
   assert.ok(
     kept,
-    "job sent 23 hours ago is still listed (not wiped at midnight)",
+    "job sent 71 hours ago is still listed (not wiped at midnight)",
   );
   assert.ok(
     Math.abs(new Date(kept.expiresAt) - (Date.now() + hour)) < 60000,
-    "expiresAt = sent time + 24 hours",
+    "expiresAt = sent time + 72 hours",
   );
   assert.ok(
     !listed.some((j) => ["111111", "111112"].includes(j.code)),
-    "jobs older than 24 hours are hidden before the purge runs",
+    "jobs older than 72 hours are hidden before the purge runs",
   );
   await purgeExpiredMedia();
   assert.equal(
@@ -1308,7 +1308,7 @@ test("each print job lives 24 hours from when it was sent, then is purged with i
   await PrintJob.deleteMany({ code: "222222" });
 });
 
-test("each photo is kept 24 hours from when it was taken; older photos go first", async () => {
+test("each photo is kept 72 hours from when it was taken; older photos go first", async () => {
   const { b, session } = await startSession();
   await request(app)
     .post("/api/kiosk/start")
@@ -1327,7 +1327,7 @@ test("each photo is kept 24 hours from when it was taken; older photos go first"
     .post("/api/kiosk/finish")
     .send({ captureToken: session.captureToken })
     .expect(200);
-  // Giả lập: 2 ảnh đầu chụp 25 giờ trước, ảnh cuối chụp 2 giờ trước (đổi mã ảnh theo thời điểm).
+  // Giả lập: 2 ảnh đầu chụp 73 giờ trước, ảnh cuối chụp 2 giờ trước (đổi mã ảnh theo thời điểm).
   const hour = 3600 * 1000;
   const stored = await Booking.findById(b._id);
   const at = (ms) =>
@@ -1336,7 +1336,7 @@ test("each photo is kept 24 hours from when it was taken; older photos go first"
     );
   const photos = stored.photos.map((p) => ({
     ...p.toObject(),
-    _id: at(p.clientKey === "photo-late-1" ? 2 * hour : 25 * hour),
+    _id: at(p.clientKey === "photo-late-1" ? 2 * hour : MEDIA_TTL_MS + hour),
   }));
   await Booking.collection.updateOne({ _id: stored._id }, { $set: { photos } });
   const files = Object.fromEntries(photos.map((p) => [p.clientKey, p.file]));
@@ -1345,15 +1345,15 @@ test("each photo is kept 24 hours from when it was taken; older photos go first"
     .expect(200);
   const late = album.body.photos.find((p) => p.clientKey === "photo-late-1");
   assert.ok(
-    Math.abs(new Date(late.expiresAt) - (Date.now() + 22 * hour)) < 5000,
-    "each photo reports its own expiry (taken + 24h)",
+    Math.abs(new Date(late.expiresAt) - (Date.now() + MEDIA_TTL_MS - 2 * hour)) < 5000,
+    "each photo reports its own expiry (taken + 72h)",
   );
   assert.equal(await purgeExpiredMedia(), 1);
   const after = await Booking.findById(b._id);
   assert.deepEqual(
     after.photos.map((p) => p.clientKey),
     ["photo-late-1"],
-    "only photos older than 24 hours are removed",
+    "only photos older than 72 hours are removed",
   );
   assert.equal(
     after.mediaDeleted,
@@ -1361,7 +1361,7 @@ test("each photo is kept 24 hours from when it was taken; older photos go first"
     "album still open while a photo remains",
   );
   assert.ok(
-    Math.abs(after.mediaExpiresAt - (Date.now() + 22 * hour)) < 5000,
+    Math.abs(after.mediaExpiresAt - (Date.now() + MEDIA_TTL_MS - 2 * hour)) < 5000,
     "album shows when the earliest remaining photo expires",
   );
   assert.equal(
@@ -1373,7 +1373,7 @@ test("each photo is kept 24 hours from when it was taken; older photos go first"
   // Ảnh cuối cùng cũng hết hạn → album báo hết hạn.
   await Booking.collection.updateOne(
     { _id: stored._id },
-    { $set: { "photos.0._id": at(24 * hour + 60000) } },
+    { $set: { "photos.0._id": at(MEDIA_TTL_MS + 60000) } },
   );
   assert.equal(await purgeExpiredMedia(), 1);
   const gone = await Booking.findById(b._id);

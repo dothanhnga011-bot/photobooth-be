@@ -108,25 +108,29 @@ albumsRouter.get("/:token/photos/:photo", async (req, res) => {
 });
 // Video tua nhanh của lượt chụp: xem trong album (hỗ trợ tua) hoặc tải về (?download=1).
 albumsRouter.get("/:token/video", async (req, res) => {
-  const b = await album(req, { code: 1, status: 1, captureEndsAt: 1, video: 1, mediaDeleted: 1,
+  const b = await album(req, { code: 1, status: 1, createdAt: 1, captureEndsAt: 1, video: 1, mediaDeleted: 1,
     "photos._id": 1, mediaExpiresAt: 1 });
   if (!b.video?.file || b.mediaDeleted) fail(404, "Album chưa có video.");
+  const expiresAt = albumMediaExpiry(b);
+  if (!expiresAt || expiresAt <= new Date()) fail(404, "Video đã hết hạn lưu trữ.");
   if (req.query.download === "1")
     res.attachment(`NXC-${b.code}-video.${b.video.mimeType === "video/mp4" ? "mp4" : "webm"}`);
-  res.set("Cache-Control", "private, max-age=600");
-  await sendMedia(req, res, b.video.file, b.video.mimeType, albumMediaExpiry(b));
+  res.set("Cache-Control", `private, max-age=${Math.max(0, Math.min(600, Math.floor((expiresAt - Date.now()) / 1000)))}`);
+  await sendMedia(req, res, b.video.file, b.video.mimeType, expiresAt);
 });
 // Ảnh đã ghép khung ở máy chụp: ?size=thumbnail bản xem nhanh, ?download=1 tải về.
 albumsRouter.get("/:token/composite", async (req, res) => {
-  const b = await album(req, { code: 1, status: 1, captureEndsAt: 1, composite: 1, mediaDeleted: 1,
+  const b = await album(req, { code: 1, status: 1, createdAt: 1, captureEndsAt: 1, composite: 1, mediaDeleted: 1,
     "photos._id": 1, mediaExpiresAt: 1 });
   if (!b.composite?.file || b.mediaDeleted) fail(404, "Album chưa có ảnh ghép khung.");
+  const expiresAt = albumMediaExpiry(b);
+  if (!expiresAt || expiresAt <= new Date()) fail(404, "Ảnh ghép đã hết hạn lưu trữ.");
   if (req.query.download === "1") res.attachment(`NXC-${b.code}-anh-ghep.jpg`);
-  res.set("Cache-Control", "private, max-age=600");
+  res.set("Cache-Control", `private, max-age=${Math.max(0, Math.min(600, Math.floor((expiresAt - Date.now()) / 1000)))}`);
   const file = req.query.download === "1" ? b.composite.file
     : req.query.size === "preview" ? b.composite.previewFile || b.composite.file
       : req.query.size === "thumbnail" ? b.composite.thumbnailFile || b.composite.file : b.composite.file;
-  await sendMedia(req, res, file, "image/jpeg", albumMediaExpiry(b));
+  await sendMedia(req, res, file, "image/jpeg", expiresAt);
 });
 albumsRouter.get("/:token/download", async (req, res) => {
   const b = await album(req);

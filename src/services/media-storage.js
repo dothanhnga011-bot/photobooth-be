@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { config } from "../config.js";
 import { Booking, PrintJob, Setting } from "../models/index.js";
-import { MEDIA_TTL_MS, photoTime, printExpiry } from "./media.js";
+import { MEDIA_TTL_MS, albumMediaExpiry, photoTime, printExpiry } from "./media.js";
 
 // A file in the bucket that no booking or print job refers to, older than the retention period
 // plus a safety margin, can never be shown or printed again (photo/print data the database no
@@ -151,7 +151,7 @@ export async function getStorageSummary({
         ],
       })
         .select(
-          "photos._id photos.file photos.originalFile photos.thumbnailFile photos.previewFile photos.printFile photos.downloadFile video.file composite.file composite.thumbnailFile composite.previewFile mediaExpiresAt",
+          "photos._id photos.file photos.originalFile photos.thumbnailFile photos.previewFile photos.printFile photos.downloadFile video.file composite.file composite.thumbnailFile composite.previewFile mediaExpiresAt captureEndsAt createdAt",
         )
         .lean(),
       PrintJob.find().select("file sheets.file createdAt fileExpiresAt").lean(),
@@ -207,7 +207,7 @@ export async function getStorageSummary({
     addNames(names.photos, [booking.composite?.file]);
     addNames(names.thumbnails, [booking.composite?.thumbnailFile, booking.composite?.previewFile]);
     const compositeFiles = [booking.composite?.file, booking.composite?.thumbnailFile, booking.composite?.previewFile];
-    const sharedExpiry = photos.length ? Math.max(...photos.map(photoTime)) + MEDIA_TTL_MS : booking.mediaExpiresAt?.getTime();
+    const sharedExpiry = albumMediaExpiry(booking)?.getTime();
     addImageExpiry(compositeFiles, sharedExpiry);
     if (sharedExpiry <= now.getTime()) addNames(expiredNames, compositeFiles);
     expiredPhotos += old.length;
@@ -227,7 +227,7 @@ export async function getStorageSummary({
     if (
       booking.video?.file &&
       !hasFreshPhotos &&
-      (old.length || booking.mediaExpiresAt?.getTime() <= now.getTime())
+      (old.length || sharedExpiry <= now.getTime())
     )
       addNames(expiredNames, [booking.video.file]);
   }

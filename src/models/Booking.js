@@ -87,7 +87,7 @@ const bookingSchema = new Schema(
     // tải trong album, kể cả khi gói không kèm tờ in hay lệnh in chưa gửi xong.
     composite: { file: String, thumbnailFile: String, previewFile: String, frameName: String, width: Number, height: Number },
     printed: { type: Boolean, default: false },
-    // Bộ khung / chủ đề khách chọn lần gửi in gần nhất (xếp hạng chủ đề ở Tổng quan; lệnh in tự xóa sau 24 giờ).
+    // Bộ khung / chủ đề khách chọn lần gửi in gần nhất (giữ cho thống kê khi lệnh in đã tự xoá).
     frameName: String,
     // prints: số tờ 10 × 15 cm được in (theo gói + mua thêm); printSheets: số tờ khách đã gửi in.
     printSheets: { type: Number, default: 0 },
@@ -99,6 +99,8 @@ const bookingSchema = new Schema(
     extraPrintKeys: { type: [String], select: false },
     mediaExpiresAt: Date,
     mediaDeleted: { type: Boolean, default: false },
+    // Đã dọn thông tin khách/phiên chụp sau thời hạn lưu, còn lại dữ liệu đối soát doanh thu.
+    customerDataDeletedAt: Date,
   },
   { timestamps: true },
 );
@@ -117,5 +119,6 @@ bookingSchema.index({ branch: 1, paidAt: 1 });
 bookingSchema.index({ branch: 1, "extraSales.at": 1 });
 // Dọn ảnh hết hạn 15 phút/lần tìm vé có ảnh cũ (ObjectId ảnh mang thời điểm chụp).
 bookingSchema.index({ "photos._id": 1 });
+bookingSchema.index({ customerDataDeletedAt: 1, status: 1, createdAt: 1 });
 
 export default mongoose.model("Booking", bookingSchema, "bookings");

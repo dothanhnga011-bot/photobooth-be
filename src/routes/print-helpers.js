@@ -49,7 +49,7 @@ export const publicJob = (job, accessToken) => ({
   height: job.height,
   status: job.status,
   createdAt: job.createdAt,
-  // Lệnh in lưu 24 giờ kể từ lúc gửi rồi tự xóa cùng file tờ in.
+  // Lệnh in lưu 3 ngày kể từ lúc gửi rồi tự xóa cùng file tờ in.
   expiresAt: printExpiry(job),
   operatorPrint: Boolean(job.operatorPrint),
   printedAt: job.printedAt,

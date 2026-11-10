@@ -47,7 +47,7 @@ printsRouter.get("/", async (req, res) => {
     .enum(["pending", "printed"])
     .default("pending")
     .parse(req.query.status);
-  // Chỉ lệnh in còn hạn (24 giờ kể từ lúc gửi); lệnh hết hạn được dọn mỗi 15 phút.
+  // Chỉ lệnh in còn hạn (3 ngày kể từ lúc gửi); lệnh hết hạn được dọn mỗi 15 phút.
   const jobs = await PrintJob.find({
     status,
     ...(assigned && { branch: assigned }),

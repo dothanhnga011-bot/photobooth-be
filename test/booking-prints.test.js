@@ -128,7 +128,7 @@ test("deleting a reprint keeps the shared original file and never returns unchar
   assert.equal((await Booking.findById(b._id)).printSheets, 2);
 });
 
-test("shared files expire with the source instead of gaining another 24 hours on reprint", async () => {
+test("shared files expire with the source instead of gaining another retention period on reprint", async () => {
   const b = await makeBooking();
   const source = await sourceFor(b, { createdAt: new Date(Date.now() - MEDIA_TTL_MS + 30_000) });
   const repeated = await asStaff("post", `/api/admin/bookings/${b._id}/reprint`).send({

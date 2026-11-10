@@ -28,6 +28,8 @@ services:
         sync: false
       - key: MEDIA_STORAGE_PROVIDER
         value: r2
+      - key: MEDIA_TTL_HOURS
+        value: "72"
       - key: R2_ACCOUNT_ID
         sync: false
       - key: R2_ACCESS_KEY_ID

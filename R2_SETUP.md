@@ -33,7 +33,7 @@ R2_ACCESS_KEY_ID=<Access Key ID vừa tạo>
 R2_SECRET_ACCESS_KEY=<Secret Access Key vừa tạo>
 R2_PREFIX=media/
 R2_STORAGE_LIMIT_GB=10
-MEDIA_TTL_HOURS=24
+MEDIA_TTL_HOURS=72
 ```
 
 Chạy `npm run r2:check` trong backend để kiểm tra ghi/đọc/liệt kê/xóa một tệp nhỏ
@@ -50,17 +50,19 @@ Không đổi tên bucket/account khi còn ảnh; tham chiếu `r2:` không ch�
 
 ## 4. Hạn lưu và chống tồn file khi backend ngủ
 
-Mỗi ảnh (JPEG, thumbnail; ảnh cũ còn thêm bản nhận vào) hết hạn cùng thời điểm 24 giờ từ ObjectId ảnh;
-tờ in tính 24 giờ từ lúc gửi. Backend dọn 15 phút/lần và có nút dọn ngay. URL xem ảnh/tờ in
-chặn nội dung đã hết hạn, kể cả khi đợt dọn file chưa chạy. Vé/doanh thu giữ nguyên.
+Mỗi ảnh (JPEG, thumbnail; ảnh cũ còn thêm bản nhận vào) hết hạn cùng thời điểm 72 giờ từ ObjectId ảnh;
+tờ in tính 72 giờ từ lúc gửi. Video và ảnh ghép xoá cùng ảnh cuối của album. Backend dọn khi khởi động và
+15 phút/lần; URL xem ảnh/tờ in chặn nội dung đã hết hạn dù đợt dọn file chưa chạy. Khi vé hoàn tất/hủy đã
+quá hạn và không còn file/lệnh in, tên, số điện thoại, token album và dữ liệu phiên chụp cũng bị xoá;
+giữ sổ bán hàng để thống kê/đối soát doanh thu. Album đã dọn dữ liệu trả 404.
 
 Render miễn phí có thể ngủ, nên nên thêm rule dự phòng trong bucket → **Settings →
-Object Lifecycle Rules → Add rule**: prefix `media/`, delete sau **2 ngày** khi TTL là 24 giờ.
+Object Lifecycle Rules → Add rule**: prefix `media/`, delete sau **4 ngày** khi TTL là 72 giờ.
 Rule này dọn cả tệp mồ côi nếu upload lỗi hoặc server tắt trước khi lưu tham chiếu.
 Nếu đổi TTL, đặt rule dài hơn TTL (ví dụ TTL 72 giờ thì rule ít nhất 4 ngày).
 Không áp dụng rule này cho bucket chứa khung ảnh/logo/tệp muốn lưu vĩnh viễn.
 Cloudflare dọn lifecycle bất đồng bộ; đây là cơ chế dự phòng, không bảo đảm xóa đúng giây
-24 giờ. [Tài liệu lifecycle](https://developers.cloudflare.com/r2/buckets/object-lifecycles/).
+hết hạn. [Tài liệu lifecycle](https://developers.cloudflare.com/r2/buckets/object-lifecycles/).
 
 ## 5. Dung lượng, chất lượng và chuyển đổi dữ liệu cũ
 

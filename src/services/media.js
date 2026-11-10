@@ -14,8 +14,10 @@ import PrintJob from "../models/PrintJob.js";
 
 // New files use the configured store; opaque r2: references keep older GridFS
 // files readable throughout the transition. Never use ephemeral disk for writes.
-export const MEDIA_TTL_MS =
-  Number(process.env.MEDIA_TTL_HOURS || 24) * 60 * 60 * 1000;
+const retentionHours = Number(process.env.MEDIA_TTL_HOURS || 72);
+if (!Number.isFinite(retentionHours) || retentionHours <= 0)
+  throw new Error("MEDIA_TTL_HOURS phải là số giờ lớn hơn 0.");
+export const MEDIA_TTL_MS = retentionHours * 60 * 60 * 1000;
 const buckets = new WeakMap();
 const bucket = () => {
   const db = mongoose.connection.db;
@@ -121,9 +123,10 @@ export async function photoLinks(p, now = Date.now()) {
 // photos (the cleanup task uses the same rule). A media-only remainder uses its stored expiry.
 export function albumMediaExpiry(b) {
   if (b.mediaDeleted) return undefined;
+  const sessionEnd = b.captureEndsAt || b.createdAt;
   return b.photos?.length
     ? new Date(Math.max(...b.photos.map((p) => photoExpiry(p).getTime())))
-    : b.mediaExpiresAt;
+    : b.mediaExpiresAt || (sessionEnd ? new Date(Number(sessionEnd) + MEDIA_TTL_MS) : undefined);
 }
 
 export async function mediaLinks(files, expiresAt, contentType, now = Date.now()) {
@@ -236,8 +239,8 @@ export async function sendMedia(req, res, file, contentType, expiresAt) {
   );
 }
 
-// Mỗi ảnh lưu MEDIA_TTL_HOURS giờ (mặc định 24) kể từ lúc chụp / tải lên — thời điểm lấy từ
-// mã ảnh (ObjectId), nên ảnh cũ cũng tính đúng. Lệnh in lưu 24 giờ kể từ lúc khách gửi.
+// Mỗi ảnh lưu MEDIA_TTL_HOURS giờ (mặc định 72 = 3 ngày) kể từ lúc chụp / tải lên — thời điểm lấy từ
+// mã ảnh (ObjectId), nên ảnh cũ cũng tính đúng. Lệnh in dùng cùng thời hạn kể từ lúc khách gửi.
 export const photoTime = (p) => p._id.getTimestamp().getTime();
 export const photoExpiry = (p) => new Date(photoTime(p) + MEDIA_TTL_MS);
 export const printExpiry = (job) => new Date(Math.min(
@@ -279,12 +282,17 @@ export async function purgeExpiredMedia(now = new Date()) {
       // Album đã hết ảnh nhưng còn video / ảnh ghép khung.
       { "video.file": { $exists: true }, mediaExpiresAt: { $lte: now } },
       { "composite.file": { $exists: true }, mediaExpiresAt: { $lte: now } },
+      // Phiên chỉ tải được video/ảnh ghép mà không có ảnh gốc vẫn phải hết hạn.
+      { "photos.0": { $exists: false }, mediaExpiresAt: null, createdAt: { $lte: cutoff },
+        $or: [{ "video.file": { $exists: true } }, { "composite.file": { $exists: true } }] },
     ],
   });
   let changed = 0;
   for (const b of candidates) {
     const old = b.photos.filter((p) => photoTime(p) <= cutoff.getTime());
     const keep = b.photos.filter((p) => photoTime(p) > cutoff.getTime());
+    // Lọc lại hạn của album chỉ có video/ảnh ghép: createdAt có thể sớm hơn buổi chụp nhiều ngày.
+    if (!old.length && (!albumMediaExpiry(b) || albumMediaExpiry(b) > now)) continue;
     // Video và ảnh ghép khung xóa cùng ảnh cuối cùng của album.
     const video = keep.length
       ? []
@@ -311,19 +319,69 @@ export async function purgeExpiredMedia(now = new Date()) {
       { $set: { mediaDeleted: true }, $unset: { video: 1, composite: 1 } },
     );
   }
-  // Mỗi lệnh in lưu 24 giờ kể từ lúc khách gửi (đã in hay chưa), rồi xóa cùng file tờ in.
+  // Lệnh in dùng cùng thời hạn lưu trữ (đã in hay chưa), rồi xóa cùng file tờ in.
   const oldJobs = await PrintJob.find({ $or: [{ createdAt: { $lte: cutoff } }, { fileExpiresAt: { $lte: now } }] });
   await deleteMedia(await unsharedPrintFiles(oldJobs));
   await PrintJob.deleteMany({ _id: { $in: oldJobs.map((j) => j._id) } });
+  await purgeExpiredCustomerData(now);
   return changed;
+}
+
+// Sau khi hết thời hạn và không còn file/lệnh in, chỉ giữ sổ bán hàng và các khoá chống ghi nhận
+// tiền hai lần. Không xoá Booking: báo cáo theo ngày, ca, chi nhánh, gói và phương thức thu dựa vào đó.
+async function purgeExpiredCustomerData(now) {
+  const cutoff = new Date(now - MEDIA_TTL_MS);
+  const eligible = {
+    customerDataDeletedAt: null,
+    status: { $in: ["completed", "cancelled"] },
+    createdAt: { $lte: cutoff },
+    $or: [{ captureEndsAt: null }, { captureEndsAt: { $lte: cutoff } }],
+    "photos.0": { $exists: false },
+    "video.file": { $exists: false },
+    "composite.file": { $exists: false },
+  };
+  const unset = Object.fromEntries([
+    "name", "phone", "accessToken", "captureSession", "captureDiag", "captureSeenAt",
+    "captureStartedAt", "captureEndsAt", "captureMode", "captureDuration", "countdownSeconds",
+    "selectCount", "shots", "nextPhotoNumber", "codeExpiresAt", "mediaExpiresAt", "requestedExtraPrints",
+  ].map((key) => [key, 1]));
+  // Join theo chỉ mục booking của PrintJob, đọc từng batch thay vì nạp mọi vé cũ vào RAM.
+  const cursor = Booking.aggregate([
+    { $match: eligible },
+    { $lookup: { from: PrintJob.collection.name, localField: "_id", foreignField: "booking",
+      pipeline: [{ $limit: 1 }, { $project: { _id: 1 } }], as: "remainingPrints" } },
+    { $match: { "remainingPrints.0": { $exists: false } } },
+    { $project: { _id: 1 } },
+  ]).cursor({ batchSize: 500 });
+  let ids = [];
+  const flush = async () => {
+    await Booking.updateMany({ ...eligible, _id: { $in: ids } }, {
+      $unset: unset,
+      $set: { mediaDeleted: true, active: false, customerDataDeletedAt: now },
+    });
+    ids = [];
+  };
+  try {
+    for await (const booking of cursor) {
+      ids.push(booking._id);
+      if (ids.length === 500) await flush();
+    }
+    if (ids.length) await flush();
+  } finally {
+    await cursor.close();
+  }
 }
 
 export function startMediaCleanup() {
   validateMediaStorage();
-  const run = () =>
-    purgeExpiredMedia().catch((e) =>
-      console.error("Dọn ảnh/video hết hạn thất bại:", e.message),
-    );
+  let running = false;
+  const run = async () => {
+    if (running) return;
+    running = true;
+    try { await purgeExpiredMedia(); }
+    catch (e) { console.error("Dọn ảnh/video hết hạn thất bại:", e.message); }
+    finally { running = false; }
+  };
   run();
   return setInterval(run, 15 * 60 * 1000).unref();
 }

@@ -264,7 +264,7 @@ export const openapi = {
         number: int("Số thứ tự ảnh (#01, #02…)"),
         kind: str("Loại ảnh", { example: "original" }),
         clientKey: str("Mã máy chụp gắn cho ảnh (chống gửi trùng)"),
-        expiresAt: str("Ảnh tự xóa lúc này (24 giờ sau khi chụp)", {
+        expiresAt: str("Ảnh tự xóa lúc này (3 ngày sau khi chụp)", {
           format: "date-time",
         }),
         printSource: bool("Đã có nguồn in 3000 px riêng (size=print)"),
@@ -311,7 +311,7 @@ export const openapi = {
         captureStartedAt: { type: "string", format: "date-time" },
         captureEndsAt: { type: "string", format: "date-time" },
         mediaExpiresAt: str(
-          "Lúc ảnh sớm nhất còn lại tự xóa (mỗi ảnh lưu 24 giờ kể từ lúc chụp)",
+          "Lúc ảnh sớm nhất còn lại tự xóa (mỗi ảnh lưu 3 ngày kể từ lúc chụp)",
           {
             format: "date-time",
           },

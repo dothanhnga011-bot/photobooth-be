@@ -597,10 +597,10 @@ test("frame lists carry a light WebP preview; the original stays untouched for p
 
 test("the kiosk saves the framed photo into the album even without prints; it expires with the album", async () => {
   const sharp = (await import("sharp")).default;
-  const { purgeExpiredMedia, readMedia } = await import("../src/services/media.js");
+  const { MEDIA_TTL_MS, purgeExpiredMedia, readMedia } = await import("../src/services/media.js");
   const sessionId = "session-composite-test";
   const accessToken = "k".repeat(48);
-  const old = new mongoose.Types.ObjectId(Math.floor((Date.now() - 30 * 3600_000) / 1000));
+  const old = new mongoose.Types.ObjectId(Math.floor((Date.now() - MEDIA_TTL_MS - 60000) / 1000));
   const booking = await Booking.create({
     branch: "Bắc Giang", code: "616161", status: "completed", paid: true, accessToken, prints: 0,
     captureSession: sessionId, captureStartedAt: new Date(), captureEndsAt: new Date(Date.now() - 1000),

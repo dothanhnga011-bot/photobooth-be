@@ -17,7 +17,7 @@ export const publicBooking = (b) => ({
       number: p.number || i + 1,
       id: p._id,
       kind: p.kind,
-      // Mỗi ảnh lưu 24 giờ kể từ lúc chụp.
+      // Mỗi ảnh lưu 3 ngày kể từ lúc chụp.
       expiresAt: photoExpiry(p),
       // Máy chụp ghép ảnh "đang lưu" với ảnh đã lưu (không nạp lại ảnh đang hiện).
       clientKey: p.clientKey || undefined,
@@ -65,7 +65,7 @@ export async function album(req, projection) {
   const read = () =>
     Booking.findOne({ accessToken: req.params.token }).select(projection);
   const b = await read();
-  if (!b) fail(404, "Không tìm thấy album.");
+  if (!b) fail(404, "Album không tồn tại hoặc đã hết hạn lưu trữ.");
   // Máy chụp tắt trước khi bấm "Hoàn thành": khách mở album vẫn nhận được ảnh.
   if (isOverdue(b))
     return (

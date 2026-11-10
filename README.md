@@ -58,11 +58,13 @@ Trang Swagger chạy cùng địa chỉ với máy chủ nên được phép g�
   Kiểm tra danh sách cũ và chuẩn hóa thứ tự trùng/0; không thay ảnh, tên hoặc trạng thái khung.
 - Ảnh mới lưu trong GridFS hoặc Cloudflare R2 theo `MEDIA_STORAGE_PROVIDER`; mặc định GridFS.
   [Hướng dẫn bật R2](R2_SETUP.md) gồm tạo bucket riêng tư, khóa và biến môi trường backend.
-  Ảnh GridFS cũ vẫn mở được khi bật R2. **Mỗi ảnh tự xóa sau `MEDIA_TTL_HOURS` giờ (mặc định 24) kể từ lúc chụp / tải
+  Ảnh GridFS cũ vẫn mở được khi bật R2. **Mỗi ảnh tự xóa sau `MEDIA_TTL_HOURS` giờ (mặc định 72 = 3 ngày) kể từ lúc chụp / tải
   lên** — riêng từng ảnh, ảnh cũ đi trước; album hết ảnh thì báo hết hạn. `mediaExpiresAt` của vé = lúc ảnh sớm nhất
-  còn lại tự xóa; API trả `expiresAt` cho từng ảnh. **Mỗi lệnh in giữ 24 giờ kể từ lúc khách gửi** (đã in hay chưa),
+  còn lại tự xóa; API trả `expiresAt` cho từng ảnh. **Mỗi lệnh in giữ cùng thời hạn 3 ngày kể từ lúc khách gửi** (đã in hay chưa),
   rồi xóa cùng file tờ in; hàng chờ in chỉ hiện lệnh còn hạn, kèm `expiresAt`. Việc dọn chạy 15 phút/lần. Thông tin vé
-  (mã, khách, tiền, số tờ in) giữ lại để xem doanh thu.
+  đã hoàn tất/hủy, quá hạn và không còn media/lệnh in được dọn tên, số điện thoại, token album và dữ liệu phiên chụp.
+  Giữ sổ bán hàng (mã, ngày, chi nhánh, gói, tiền, hình thức thu, tiền bán thêm, số tờ) và khoá chống tính tiền lặp
+  để báo cáo/đối soát không đổi. Không xoá vé đang chụp hay lịch hẹn tương lai.
 - Chỉ quản trị viên xem tiền: doanh thu, báo cáo theo tháng, tổng tiền từng vé (máy chủ không gửi các số này cho
   lễ tân). Lễ tân chỉ thấy số tiền cần thu khi tạo mã / bán thêm tờ in.
 - Lễ tân vào **Phòng & chi nhánh** để xem phòng đang hoạt động và mở/cài kiosk: `GET /api/admin/rooms`
