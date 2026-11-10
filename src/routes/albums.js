@@ -164,7 +164,7 @@ albumsRouter.get("/:token/print", async (req, res) => {
     ...(requestKey && { requestKey }),
   }).sort({
     createdAt: -1,
-  });
+  }).lean();
   res.json(
     job
       ? {
@@ -180,7 +180,7 @@ albumsRouter.get("/:token/prints/:job", async (req, res) => {
   const job = await PrintJob.findOne({
     _id: id.parse(req.params.job),
     booking: b._id,
-  });
+  }).lean();
   if (!job) fail(404, "Không tìm thấy file in.");
   const expiresAt = printExpiry(job).getTime();
   if (expiresAt <= Date.now()) fail(404, "File in đã hết hạn lưu trữ.");

@@ -201,7 +201,7 @@ for (const [route, [Model, schema]] of Object.entries(resources)) {
           ? (await query.select(FRAME_LIST_FIELDS).lean()).map(frameListItem)
           : route === "stickers"
             ? (await query.select(STICKER_LIST_FIELDS).lean()).map(stickerListItem)
-            : await query,
+            : await query.lean(),
       );
     },
   );

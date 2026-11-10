@@ -44,5 +44,8 @@ const printJobSchema = new Schema(
 printJobSchema.index({ status: 1, createdAt: -1 });
 printJobSchema.index({ booking: 1, createdAt: -1 });
 printJobSchema.index({ room: 1, status: 1, spoolStatus: 1, createdAt: 1 });
+// Hàng chờ in theo chi nhánh cho lễ tân (chờ in tăng dần, đã in giảm dần).
+printJobSchema.index({ branch: 1, status: 1, createdAt: 1 });
+printJobSchema.index({ branch: 1, status: 1, createdAt: -1 });
 
 export default mongoose.model("PrintJob", printJobSchema, "print_jobs");

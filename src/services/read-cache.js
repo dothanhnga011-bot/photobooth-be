@@ -38,3 +38,5 @@ export function clearOnWrite(cache, schema) {
 // Catalog: rooms, packages, frames and studio settings. Users: the session check of every admin request.
 export const catalogCache = createReadCache({ ttl: 60_000, max: 4 });
 export const userCache = createReadCache({ ttl: 60_000, max: 100 });
+// Cache thống kê tổng quan (TTL ngắn 10 giây để giảm tải MongoDB khi nhiều nhân viên cùng mở dashboard).
+export const statsCache = createReadCache({ ttl: 10_000, max: 50 });

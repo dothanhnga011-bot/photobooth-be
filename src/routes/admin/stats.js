@@ -18,7 +18,7 @@ statsRouter.get("/", async (req, res) => {
       new Date(Date.now() - (6 - i) * 86400000),
     ),
   );
-  const stats = await getStudioStats(today(), days, staffBranch(req));
+  const stats = { ...(await getStudioStats(today(), days, staffBranch(req))) };
   // Lễ tân chưa được cấp quyền xem doanh thu: chỉ số lượt khách / lệnh in.
   if (!can(req, "revenue:view")) {
     delete stats.revenue;
@@ -54,7 +54,7 @@ function range(req) {
 // Tổng hợp: doanh thu thực nhận, số đơn so với kỳ trước, tiền mặt / chuyển khoản và xếp hạng
 // chủ đề, gói chụp, máy. Không có quyền xem doanh thu thì chỉ còn số lượt.
 statsRouter.get("/summary", async (req, res) => {
-  const summary = await getSummary(range(req));
+  const summary = { ...(await getSummary(range(req))) };
   if (!can(req, "revenue:view")) {
     for (const key of ["revenue", "previousRevenue", "revenueGrowth", "cash", "transfer"])
       delete summary[key];

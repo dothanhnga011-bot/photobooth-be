@@ -131,9 +131,11 @@ export async function mediaLinks(files, expiresAt, contentType, now = Date.now()
   const window = linkWindow(expiresAt, now);
   if (window.fresh <= 0 || window.seconds <= 0) return undefined;
   const links = { until: new Date(window.signedAt + window.seconds * 1000) };
-  for (const [size, file] of Object.entries(files)) {
-    if (isR2File(file)) links[size] = await signLink(file, window, contentType);
-  }
+  await Promise.all(
+    Object.entries(files).map(async ([size, file]) => {
+      if (isR2File(file)) links[size] = await signLink(file, window, contentType);
+    }),
+  );
   return links;
 }
 

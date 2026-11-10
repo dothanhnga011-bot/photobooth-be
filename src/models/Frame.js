@@ -35,6 +35,8 @@ const frameSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+frameSchema.index({ active: 1, themeName: 1, order: 1 });
+
 // /api/catalog is cached in memory; any change here refreshes it.
 clearOnWrite(catalogCache, frameSchema);
 

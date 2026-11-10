@@ -107,6 +107,10 @@ bookingSchema.index({ room: 1, date: 1 });
 bookingSchema.index({ createdAt: -1 });
 bookingSchema.index({ date: 1, createdAt: -1 });
 bookingSchema.index({ status: 1, createdAt: -1 });
+// Thống kê doanh thu theo ngày & chi nhánh (báo cáo, tổng quan, biểu đồ).
+bookingSchema.index({ paid: 1, date: 1, branch: 1 });
+// Danh sách đơn hàng tại quầy theo chi nhánh và trạng thái.
+bookingSchema.index({ branch: 1, status: 1, createdAt: -1 });
 bookingSchema.index({ mediaExpiresAt: 1 });
 // Tổng tiền đã thu trong ca trực của một chi nhánh (khung Ca trực làm mới 30 giây/lần).
 bookingSchema.index({ branch: 1, paidAt: 1 });

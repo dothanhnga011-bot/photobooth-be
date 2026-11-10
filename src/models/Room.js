@@ -27,6 +27,8 @@ const roomSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+roomSchema.index({ active: 1, branch: 1 });
+
 // /api/catalog is cached in memory; any change here refreshes it.
 clearOnWrite(catalogCache, roomSchema);
 

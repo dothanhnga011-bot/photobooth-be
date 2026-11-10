@@ -58,7 +58,7 @@ export async function touchKioskFast(captureToken, diag) {
       captureSession: { $in: [null, payload.sessionId] },
     },
     { $set: { captureSeenAt: new Date(), ...(diag && { captureDiag: { ...diag, at: new Date() } }) } },
-    { new: true },
+    { new: true, lean: true },
   );
 }
 // photoKey: also load what a photo save checks (end time, whether this photo is already saved),

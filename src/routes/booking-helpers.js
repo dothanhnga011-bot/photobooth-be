@@ -4,7 +4,7 @@ import { albumMediaExpiry, mediaLinks, photoExpiry, photoLinks } from "../servic
 import { fail } from "./validation.js";
 
 export const publicBooking = (b) => ({
-  ...b.toObject(),
+  ...(b.toObject ? b.toObject() : b),
   accessToken: undefined,
   captureSession: undefined,
   requestKey: undefined,
