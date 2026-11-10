@@ -19,6 +19,11 @@ const printJobSchema = new Schema(
     sheets: [{ file: String, width: Number, height: Number }],
     requestKey: { type: String, unique: true, sparse: true },
     requestFingerprint: { type: String, select: false },
+    // Operator recovery never consumes the guest's purchased print allowance.
+    operatorPrint: Boolean,
+    reprintOf: { type: Schema.Types.ObjectId, ref: "PrintJob" },
+    // A reprint shares its source bytes and must not extend their retention period.
+    fileExpiresAt: Date,
     spoolStatus: { type: String, default: "idle" },
     spoolMessage: String,
     spoolLeaseId: { type: String, select: false },
@@ -37,6 +42,7 @@ const printJobSchema = new Schema(
 );
 
 printJobSchema.index({ status: 1, createdAt: -1 });
+printJobSchema.index({ booking: 1, createdAt: -1 });
 printJobSchema.index({ room: 1, status: 1, spoolStatus: 1, createdAt: 1 });
 
 export default mongoose.model("PrintJob", printJobSchema, "print_jobs");

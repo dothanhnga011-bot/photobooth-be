@@ -938,6 +938,12 @@ export const openapi = {
       },
     },
     "/api/admin/bookings/{id}/prints": {
+      get: {
+        tags: ["Quầy & vé"], summary: "File in mới nhất và lịch sử in còn hạn của một đơn",
+        description: "Cần quyền print:operate và đúng chi nhánh. Trả booking (không kèm mảng ảnh), số ảnh gốc và tối đa 20 lệnh mới nhất, gồm từng bộ nhiều tờ.",
+        security: loggedIn, parameters: [pathParam("id", "Mã đơn (_id)")],
+        responses: { ...ok("Thông tin đơn và các file in"), ...errors(401, 403, 404) },
+      },
       post: {
         tags: ["Quầy & vé"],
         summary: "Bán thêm tờ in cho vé",
@@ -972,20 +978,31 @@ export const openapi = {
         tags: ["Quầy & vé"],
         summary: "In lại file ảnh đã ghép của một đơn hàng",
         description:
-          "Tạo lệnh in mới từ file còn hạn của lệnh cũ; không trừ thêm hạn mức album.",
+          "In hỗ trợ, không trừ hạn mức hoặc cộng tiền. delivery=local chỉ ghi lại lần gửi RX1 đã thành công, không xếp hàng in lần nữa. requestKey chống trùng; bản in lại giữ hạn lưu của file nguồn.",
         security: loggedIn,
         parameters: [pathParam("id", "Mã đơn hàng (_id)")],
         requestBody: body(
           {
             jobId: str("Mã lệnh in nguồn"),
             copies: int("Số bản (1–20)", { minimum: 1, maximum: 20 }),
+            requestKey: uuid,
+            delivery: enumOf(["queue", "local"]),
           },
           ["jobId", "copies"],
         ),
         responses: {
           ...ok("Lệnh in lại đã tạo"),
-          ...errors(400, 401, 404),
+          ...errors(400, 401, 403, 404, 409),
         },
+      },
+    },
+    "/api/admin/bookings/{id}/print-file": {
+      post: {
+        tags: ["Quầy & vé"], summary: "Lưu tờ ghép thủ công sau khi RX1 nhận file",
+        description: "Cần print:operate và đúng chi nhánh. Cùng định dạng nhị phân/header với print-pack, thêm X-Print-Copies (1–20). Tối đa 20 tờ × bản, 64 MB. Không gửi máy in, không trừ lượt hoặc cộng tiền; gửi lại cùng requestKey trả bản ghi cũ.",
+        security: loggedIn, parameters: [pathParam("id", "Mã đơn (_id)")],
+        requestBody: { required: true, content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } } },
+        responses: { ...ok("File in hỗ trợ đã lưu"), ...errors(400, 401, 403, 404, 409) },
       },
     },
     "/api/admin/rooms/live": {
@@ -1422,6 +1439,15 @@ export const openapi = {
           },
           ...errors(404),
         },
+      },
+    },
+    "/api/albums/{token}/print-archive": {
+      post: {
+        tags: ["Album khách"], summary: "Lưu file kiosk đã in trực tiếp, không phát lệnh in",
+        description: "Cùng body/header với print-pack. Chỉ dùng sau khi RX1 cục bộ xác nhận nhận file; lưu bytes gốc, tính số tờ vào vé một lần và đặt spoolStatus=sent. Luôn bỏ qua bộ gửi in và hàng chờ; có thể thử tải lên lại bằng cùng requestKey sau mất mạng.",
+        parameters: [tokenParam],
+        requestBody: { required: true, content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } } },
+        responses: { ...ok("Đã lưu file in trực tiếp"), ...errors(400, 404, 409, 429) },
       },
     },
     "/api/albums/{token}/print-pack": {

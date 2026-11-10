@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { Booking, PrintJob } from "../../models/index.js";
 import { admin, allow, requireBranch, staffBranch } from "../../middleware/auth.js";
-import { deleteMedia, MEDIA_TTL_MS } from "../../services/media.js";
+import { deleteMedia, livePrintFilter, unsharedPrintFiles } from "../../services/media.js";
 import { printEvents } from "../../services/print-events.js";
 import { fail, id } from "../validation.js";
 import { publicJob, releaseSheets } from "../print-helpers.js";
@@ -51,7 +51,7 @@ printsRouter.get("/", async (req, res) => {
   const jobs = await PrintJob.find({
     status,
     ...(assigned && { branch: assigned }),
-    createdAt: { $gt: new Date(Date.now() - MEDIA_TTL_MS) },
+    ...livePrintFilter(),
   })
     .sort({ createdAt: status === "pending" ? 1 : -1 })
     .limit(200)
@@ -81,14 +81,12 @@ printsRouter.patch("/:id", allow("print:operate"), async (req, res) => {
 printsRouter.delete("/:id", admin, async (req, res) => {
   const job = await PrintJob.findById(id.parse(req.params.id));
   if (!job) fail(404, "Không tìm thấy lệnh in.");
-  await deleteMedia([
-    ...new Set([job.file, ...(job.sheets || []).map((s) => s.file)]),
-  ]);
+  await deleteMedia(await unsharedPrintFiles([job]));
   // Keep the reference/quota when R2 is unavailable so cancellation can retry.
   const removed = await PrintJob.findOneAndDelete({ _id: job._id });
   if (!removed) return res.json({ ok: true });
   // Lệnh chưa in bị hủy: trả lại số tờ để khách sửa và gửi lại.
-  if (removed.status === "pending" && removed.booking)
+  if (removed.status === "pending" && removed.booking && !removed.operatorPrint)
     await releaseSheets(removed.booking, removed.sheets?.length || 1);
   res.json({ ok: true });
 });

@@ -261,6 +261,18 @@ test("expiry estimates use each photo timestamp, exact boundary, job age and vid
   assert.equal(await PrintJob.countDocuments({}), 2);
 });
 
+test("reprint storage uses the source file's expiry instead of a fresh retention period", async () => {
+  const now = secondNow();
+  const expiresAt = new Date(now.getTime() + 30_000);
+  await putFile("reprint-expiry.png", 10, "image/png");
+  await PrintJob.create({ file: "reprint-expiry.png", fileExpiresAt: expiresAt, operatorPrint: true });
+  const fresh = await getStorageSummary({ now });
+  assert.equal(fresh.retention.nextImageExpiresAt, expiresAt.toISOString());
+  const expired = await getStorageSummary({ now: new Date(expiresAt.getTime() + 1000) });
+  assert.equal(expired.expired.printJobs, 1);
+  assert.equal(expired.expired.files, 1);
+});
+
 test("nearest stored image expiry uses each album photo age before newer print jobs", async () => {
   const now = secondNow();
   const olderPhoto = new Date(now.getTime() - 3 * 3_600_000);

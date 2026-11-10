@@ -238,6 +238,24 @@ export async function sendMedia(req, res, file, contentType, expiresAt) {
 // mã ảnh (ObjectId), nên ảnh cũ cũng tính đúng. Lệnh in lưu 24 giờ kể từ lúc khách gửi.
 export const photoTime = (p) => p._id.getTimestamp().getTime();
 export const photoExpiry = (p) => new Date(photoTime(p) + MEDIA_TTL_MS);
+export const printExpiry = (job) => new Date(Math.min(
+  new Date(job.createdAt).getTime() + MEDIA_TTL_MS,
+  job.fileExpiresAt ? new Date(job.fileExpiresAt).getTime() : Infinity,
+));
+export const livePrintFilter = (now = Date.now()) => ({
+  createdAt: { $gt: new Date(Number(now) - MEDIA_TTL_MS) },
+  $or: [{ fileExpiresAt: null }, { fileExpiresAt: { $gt: new Date(now) } }],
+});
+// Reprints share files. Deleting one job must not break the other jobs using them.
+export async function unsharedPrintFiles(jobs) {
+  const files = [...new Set(jobs.flatMap((j) => [j.file, ...(j.sheets || []).map((s) => s.file)]).filter(Boolean))];
+  if (!files.length) return [];
+  const others = await PrintJob.find({ _id: { $nin: jobs.map((j) => j._id) },
+    $or: [{ file: { $in: files } }, { "sheets.file": { $in: files } }],
+  }).select("file sheets.file").lean();
+  const used = new Set(others.flatMap((j) => [j.file, ...(j.sheets || []).map((s) => s.file)]));
+  return files.filter((file) => !used.has(file));
+}
 // Lúc ảnh sớm nhất còn lại tự xóa (hiện cho khách: "ảnh đầu tiên tự xóa lúc …").
 export function firstExpiry(photos = []) {
   const shown = photos.filter((p) => !p.deleted);
@@ -292,12 +310,8 @@ export async function purgeExpiredMedia(now = new Date()) {
     );
   }
   // Mỗi lệnh in lưu 24 giờ kể từ lúc khách gửi (đã in hay chưa), rồi xóa cùng file tờ in.
-  const oldJobs = await PrintJob.find({ createdAt: { $lte: cutoff } });
-  await deleteMedia(
-    oldJobs
-      .flatMap((j) => [j.file, ...(j.sheets || []).map((s) => s.file)])
-      .filter(Boolean),
-  );
+  const oldJobs = await PrintJob.find({ $or: [{ createdAt: { $lte: cutoff } }, { fileExpiresAt: { $lte: now } }] });
+  await deleteMedia(await unsharedPrintFiles(oldJobs));
   await PrintJob.deleteMany({ _id: { $in: oldJobs.map((j) => j._id) } });
   return changed;
 }

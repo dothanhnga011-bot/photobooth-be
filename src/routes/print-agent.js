@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { config } from "../config.js";
 import { PrintJob } from "../models/index.js";
-import { MEDIA_TTL_MS, sendMedia } from "../services/media.js";
+import { livePrintFilter, sendMedia } from "../services/media.js";
 import { printContentType } from "../services/print-image.js";
 import { noteAgent, noteRoomAgent, savePrinterStatus, saveRoomPrinterStatus } from "../services/printer-status.js";
 import { printEvents } from "../services/print-events.js";
@@ -69,7 +69,7 @@ printAgentRouter.post("/claim", async (req, res) => {
   await (req.printScope ? noteRoomAgent(req.printScope, sizes) : noteAgent(branch, sizes)).catch(() => {});
   const job = await PrintJob.findOneAndUpdate({
     ...scope, status: "pending", spoolStatus: "queued",
-    createdAt: { $gt: new Date(now.getTime() - MEDIA_TTL_MS) },
+    ...livePrintFilter(now),
     // Lệnh in cũ không ghi khổ là khổ to.
     ...(sizes && { printSize: sizes.includes("full") ? { $in: [...sizes, null] } : { $in: sizes } }),
   }, { $set: { spoolStatus: "sending", spoolMessage: "Máy in tại tiệm đang nhận lệnh.",

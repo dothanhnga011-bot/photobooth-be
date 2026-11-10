@@ -15,6 +15,7 @@ import {
   photoFile,
   albumMediaExpiry,
   MEDIA_TTL_MS,
+  printExpiry,
 } from "../services/media.js";
 import { sendZip } from "../services/zip.js";
 import { photoDownloadFile } from "../services/photo-download.js";
@@ -181,7 +182,7 @@ albumsRouter.get("/:token/prints/:job", async (req, res) => {
     booking: b._id,
   });
   if (!job) fail(404, "Không tìm thấy file in.");
-  const expiresAt = job.createdAt.getTime() + MEDIA_TTL_MS;
+  const expiresAt = printExpiry(job).getTime();
   if (expiresAt <= Date.now()) fail(404, "File in đã hết hạn lưu trữ.");
   const sheets = job.sheets?.length ? job.sheets.map((s) => s.file) : [];
   // Tải lệnh in nhiều tờ (không chọn tờ nào): một tệp ZIP đủ các tờ, đặt tên theo thứ tự tờ.
@@ -233,6 +234,7 @@ export async function submitPrintPack(req, res) {
   const d = readPrintPack(req);
   const b = await album(req);
   const direct = req.directPrintScope;
+  const archived = req.archivePrint === true;
   if (direct && (String(b.room) !== direct.room || b.printSize === "instax"))
     fail(403, "Máy in cục bộ không thuộc phòng của đơn này.");
   const { fingerprint } = d;
@@ -298,11 +300,12 @@ export async function submitPrintPack(req, res) {
       height: sheets[0].height,
       requestKey: d.requestKey,
       requestFingerprint: fingerprint,
-      spoolStatus: direct ? "sending" : await initialSpoolStatus(b.room),
+      spoolStatus: archived ? "sent" : direct ? "sending" : await initialSpoolStatus(b.room),
+      ...(archived && { spoolMessage: "Kiosk đã gửi trực tiếp tới hàng in RX1; file được lưu để xem và in lại." }),
       ...(direct && { spoolLeaseId: randomUUID(), spoolLeaseUntil: new Date(Date.now() + 5 * 60_000),
         spoolMessage: "Máy chụp đang gửi trực tiếp tới RX1." }),
     });
-    if (!direct) dispatchPrint(job);
+    if (!direct && !archived) dispatchPrint(job);
     printEvents.emit("print", { ...publicJob(job, req.params.token), branch: b.branch });
     res.status(201).json({ ...publicJob(job), ...quota(reserved), ...(direct && { direct: { fresh: true, job: {
       id: job._id, leaseId: job.spoolLeaseId, code: job.code, printSize: job.printSize, copies: 1,
@@ -328,6 +331,11 @@ export async function submitPrintPack(req, res) {
   }
 }
 albumsRouter.post("/:token/print-pack", printLimit, printBody, submitPrintPack);
+// Archive only AFTER the local printer acknowledges the bytes. This route can never dispatch paper.
+albumsRouter.post("/:token/print-archive", printLimit, printBody, (req, res) => {
+  req.archivePrint = true;
+  return submitPrintPack(req, res);
+});
 
 // The booth uploads a camera original straight to storage: one short-lived URL for one photo.
 albumsRouter.post("/:token/photos/upload-url", async (req, res) => {

@@ -1,5 +1,5 @@
 import { Booking } from "../models/index.js";
-import { MEDIA_TTL_MS } from "../services/media.js";
+import { printExpiry } from "../services/media.js";
 import { printExtension } from "../services/print-image.js";
 
 export const quotaMessage = (quota, used) =>
@@ -50,7 +50,8 @@ export const publicJob = (job, accessToken) => ({
   status: job.status,
   createdAt: job.createdAt,
   // Lệnh in lưu 24 giờ kể từ lúc gửi rồi tự xóa cùng file tờ in.
-  expiresAt: new Date(new Date(job.createdAt).getTime() + MEDIA_TTL_MS),
+  expiresAt: printExpiry(job),
+  operatorPrint: Boolean(job.operatorPrint),
   printedAt: job.printedAt,
   printedBy: job.printedBy,
   image: accessToken ? `/api/albums/${accessToken}/prints/${job._id}` : "",

@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { config } from "../config.js";
 import { Booking, PrintJob, Setting } from "../models/index.js";
-import { MEDIA_TTL_MS, photoTime } from "./media.js";
+import { MEDIA_TTL_MS, photoTime, printExpiry } from "./media.js";
 
 // A file in the bucket that no booking or print job refers to, older than the retention period
 // plus a safety margin, can never be shown or printed again (photo/print data the database no
@@ -153,7 +153,7 @@ export async function getStorageSummary({
           "photos._id photos.file photos.originalFile photos.thumbnailFile photos.previewFile photos.printFile photos.downloadFile video.file mediaExpiresAt",
         )
         .lean(),
-      PrintJob.find().select("file sheets.file createdAt").lean(),
+      PrintJob.find().select("file sheets.file createdAt fileExpiresAt").lean(),
       Setting.findOne({ key: STORAGE_SETTING_KEY }).lean(),
       Setting.findOne({ key: R2_STORAGE_SETTING_KEY }).lean(),
       readDatabaseUsage(db),
@@ -227,8 +227,9 @@ export async function getStorageSummary({
   for (const job of jobs) {
     const files = [job.file, ...(job.sheets || []).map((sheet) => sheet.file)];
     addNames(names.printSheets, files);
-    addImageExpiry(files, job.createdAt?.getTime() + MEDIA_TTL_MS);
-    if (job.createdAt?.getTime() <= cutoff) {
+    const expiresAt = printExpiry(job).getTime();
+    addImageExpiry(files, expiresAt);
+    if (expiresAt <= now.getTime()) {
       expiredJobs++;
       addNames(expiredNames, files);
     }

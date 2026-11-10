@@ -2,10 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { Booking, PrintJob, Room, Setting } from "../../models/index.js";
 import { allow, can, hideMoney, requireBranch, staffBranch } from "../../middleware/auth.js";
-import { dispatchPrint } from "../../services/dnp.js";
-import { initialSpoolStatus } from "../../services/printer-status.js";
-import { MEDIA_TTL_MS, photoExpiry } from "../../services/media.js";
-import { printEvents } from "../../services/print-events.js";
+import { livePrintFilter, photoExpiry } from "../../services/media.js";
 import { fail, id, date } from "../validation.js";
 import { KIOSK_LIVE_MS } from "../kiosk-session.js";
 import { publicJob } from "../print-helpers.js";
@@ -59,7 +56,7 @@ bookingsRouter.get("/bookings", async (req, res) => {
     ? await Promise.all([
         PrintJob.find({
           booking: { $in: ids },
-          createdAt: { $gt: new Date(Date.now() - MEDIA_TTL_MS) },
+          ...livePrintFilter(),
         })
           .sort({ createdAt: -1 })
           .lean(),
@@ -237,47 +234,6 @@ bookingsRouter.post("/bookings/:id/prints", allow("print:operate"), async (req, 
   );
 });
 
-// In lại đúng file khách đã gửi mà không bắt khách ghép khung lần nữa. Đây là thao tác
-// vận hành (kẹt giấy, muốn thêm bản giống hệt), nên không trừ thêm hạn mức tờ in của album.
-bookingsRouter.post("/bookings/:id/reprint", allow("print:operate"), async (req, res) => {
-  const d = z
-    .object({
-      jobId: id,
-      copies: z.number().int().min(1).max(20),
-    })
-    .parse(req.body);
-  const booking = await Booking.findById(id.parse(req.params.id)).select(
-    "+accessToken branch code name roomName room",
-  );
-  if (!booking) fail(404, "Không tìm thấy đơn hàng.");
-  requireBranch(req, booking.branch);
-  const source = await PrintJob.findOne({
-    _id: d.jobId,
-    booking: booking._id,
-    createdAt: { $gt: new Date(Date.now() - MEDIA_TTL_MS) },
-  });
-  if (!source) fail(404, "File in không còn hoặc đã hết hạn lưu trữ.");
-  const job = await PrintJob.create({
-    booking: booking._id,
-    code: booking.code,
-    name: booking.name,
-    roomName: booking.roomName,
-    room: booking.room,
-    branch: booking.branch,
-    copies: d.copies,
-    frameName: source.frameName,
-    printSize: source.printSize || "full",
-    file: source.file,
-    sheets: source.sheets,
-    width: source.width,
-    height: source.height,
-    spoolStatus: await initialSpoolStatus(booking.room),
-  });
-  dispatchPrint(job);
-  const output = publicJob(job, booking.accessToken);
-  printEvents.emit("print", { ...output, branch: booking.branch });
-  res.status(201).json(output);
-});
 // Bảng phòng cho lễ tân: phòng nào trống, phòng nào đang chụp và còn bao lâu.
 const MACHINE_LIVE_MS = 3 * 60 * 1000;
 bookingsRouter.get("/rooms/live", async (req, res) => {
