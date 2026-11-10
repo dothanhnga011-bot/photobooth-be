@@ -10,6 +10,7 @@ import { app } from "../src/app.js";
 import { config } from "../src/config.js";
 import { Booking, PrintJob, Room, Setting, User } from "../src/models/index.js";
 import { getRx1Output } from "../src/services/rx1-output.js";
+import { STAFF_PERMISSIONS } from "../src/middleware/auth.js";
 
 let memory, room, adminCookie, staffCookie, agent;
 const settingsPath = "/api/admin/settings/rx1-output";
@@ -38,8 +39,12 @@ after(async () => { await mongoose.disconnect(); await memory?.stop(); });
 
 test("only admins can change output; no web override preserves installed local choices", async () => {
   await request(app).get(settingsPath).expect(401);
+  await request(app).put(settingsPath).send({ gamma: 1.3, maxResolution: true }).expect(401);
   await request(app).get(settingsPath).set("Cookie", staffCookie).expect(403);
   await request(app).put(settingsPath).set("Cookie", staffCookie).send({ gamma: 1.3, maxResolution: true }).expect(403);
+  await User.updateOne({ email: "rx1-staff@test.local" }, { $set: { permissions: STAFF_PERMISSIONS } });
+  await request(app).get(settingsPath).set("Cookie", staffCookie).expect(403);
+  await request(app).put(settingsPath).set("Cookie", staffCookie).send({ gamma: 2.2, maxResolution: false }).expect(403);
   assert.deepEqual((await asAdmin("get").expect(200)).body, { configured: false, settings: { gamma: 1.5, maxResolution: true } });
   assert.equal((await sync({ gamma: 1.18, maxResolution: false }).expect(200)).body.rx1Output, null);
 });
