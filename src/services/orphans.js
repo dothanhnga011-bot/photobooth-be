@@ -11,7 +11,7 @@ async function referencedMedia() {
       { "video.file": { $exists: true } },
       { "composite.file": { $exists: true } },
     ] })
-      .select("photos.file photos.originalFile photos.thumbnailFile photos.previewFile photos.printFile photos.downloadFile video.file composite.file composite.thumbnailFile")
+      .select("photos.file photos.originalFile photos.thumbnailFile photos.previewFile photos.printFile photos.downloadFile video.file composite.file composite.thumbnailFile composite.previewFile")
       .lean(),
     PrintJob.find().select("file sheets.file").lean(),
   ]);
@@ -20,7 +20,7 @@ async function referencedMedia() {
     for (const p of b.photos || [])
       for (const f of [p.file, p.originalFile, p.thumbnailFile, p.previewFile, p.printFile, p.downloadFile]) if (f) names.add(f);
     if (b.video?.file) names.add(b.video.file);
-    for (const f of [b.composite?.file, b.composite?.thumbnailFile]) if (f) names.add(f);
+    for (const f of [b.composite?.file, b.composite?.thumbnailFile, b.composite?.previewFile]) if (f) names.add(f);
   }
   for (const j of jobs) for (const f of [j.file, ...(j.sheets || []).map((s) => s.file)]) if (f) names.add(f);
   return names;

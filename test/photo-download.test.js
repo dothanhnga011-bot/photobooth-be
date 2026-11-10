@@ -106,6 +106,11 @@ test("20 MP guest composites, including a single strip longer than 6000 px, uplo
   assert.deepEqual([uploaded.body.width, uploaded.body.height], [2582, 7745]);
   assert.deepEqual((await request(app).get(`/api/albums/${booking.accessToken}/composite?download=1`).expect(200)).body,
     image, "framed image keeps its existing photo orientation, text and layout");
+  const displayed = await request(app).get(`/api/albums/${booking.accessToken}/composite?size=preview`).expect(200);
+  const displayMetadata = await sharp(displayed.body).metadata();
+  assert.equal(Math.max(displayMetadata.width, displayMetadata.height), 1600);
+  const forcedDownload = await request(app).get(`/api/albums/${booking.accessToken}/composite?size=preview&download=1`).expect(200);
+  assert.deepEqual(forcedDownload.body, image, "even an explicit preview query cannot reduce the download's 20 MP pixels");
   const oversized = await sharp({ create: { width: 5000, height: 5000, channels: 3, background: "#ed1923" } }).jpeg().toBuffer();
   await request(app).post("/api/kiosk/composite").set("X-Capture-Token", captureToken)
     .set("Content-Type", "image/jpeg").send(oversized).expect(400);
@@ -115,7 +120,7 @@ test("cached guest files are counted and removed with their customer's media", a
   const saved = await Booking.findById(booking._id);
   const file = saved.photos[0].downloadFile;
   const row = (await listCustomerMedia()).find(row => row.id === String(booking._id));
-  assert.equal(row.files, 4, "source, guest download, composite and its thumbnail");
+  assert.equal(row.files, 5, "source, guest download, full composite, screen preview and thumbnail");
   assert.ok(row.bytes > source.length + downloaded.length);
   await deleteCustomerMedia(booking._id);
   assert.equal(await readMedia(file), null);

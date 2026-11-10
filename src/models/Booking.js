@@ -85,7 +85,7 @@ const bookingSchema = new Schema(
     video: { file: String, mimeType: String, size: Number },
     // Ảnh đã ghép khung ở máy chụp (bản chất lượng in, vd. 1200 × 1800) + bản xem nhanh: khách xem /
     // tải trong album, kể cả khi gói không kèm tờ in hay lệnh in chưa gửi xong.
-    composite: { file: String, thumbnailFile: String, frameName: String, width: Number, height: Number },
+    composite: { file: String, thumbnailFile: String, previewFile: String, frameName: String, width: Number, height: Number },
     printed: { type: Boolean, default: false },
     // Bộ khung / chủ đề khách chọn lần gửi in gần nhất (xếp hạng chủ đề ở Tổng quan; lệnh in tự xóa sau 24 giờ).
     frameName: String,

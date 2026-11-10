@@ -8,6 +8,7 @@ import { mediaReference } from "./r2.js";
 import { cleanJpegMetadata } from "./jpeg-metadata.js";
 import { saveImageTask } from "./image-save-queue.js";
 import { schedulePrintSource } from "./print-source.js";
+import { schedulePhotoDownload } from "./photo-download-warm.js";
 import { inspectStoredOriginal } from "./direct-upload.js";
 
 const locks = new Map();
@@ -204,14 +205,15 @@ export async function attachOriginal(bookingId, clientKey, { storedOriginal, buf
     });
   }
   const mirrored = Boolean(photo.originalMirrored);
-  const { matchedCount } = await Booking.updateOne(
+  const attached = await Booking.findOneAndUpdate(
     { _id: bookingId, photos: { $elemMatch: { clientKey, originalPending: true, deleted: { $ne: true } } } },
     {
       $set: { "photos.$.file": file, "photos.$.mirrored": mirrored, "photos.$.sourcePreserved": preservesSource(meta) },
       $unset: { "photos.$.originalPending": 1, "photos.$.originalMirrored": 1 },
     },
-  );
-  if (!matchedCount) {
+    { new: true },
+  ).select("status");
+  if (!attached) {
     // Attached meanwhile by a retry, or the photo was removed: keep nothing of this attempt.
     if (!storedOriginal) await deleteMedia([file]).catch(() => {});
     return false;
@@ -223,6 +225,7 @@ export async function attachOriginal(bookingId, clientKey, { storedOriginal, buf
     encode: null,
     reload: reloadPrintSource(file, mirrored),
   });
+  if (attached.status === "completed") schedulePhotoDownload(b._id, { _id: photo._id, file });
   return true;
 }
 
@@ -373,6 +376,7 @@ export function appendCapture(
         encode: media.encodePrint,
         reload: reloadPrintSource(media.file, mirrored),
       });
+      if (!media.previewOnly && updated.status === "completed") schedulePhotoDownload(bookingId, photo);
       return updated;
     } catch (error) {
       if (media) await deleteMedia(ownFiles(media)).catch(() => {});
@@ -432,15 +436,18 @@ export const captureStatus = () => ({
   printerAvailable: Boolean(config.dnpPrinter) && process.platform === "win32",
 });
 export async function finishCapture(id) {
-  return captureLock(id, () =>
-    Booking.findOneAndUpdate(
+  return captureLock(id, async () => {
+    const completed = await Booking.findOneAndUpdate(
       { _id: id, status: "checked_in" },
       {
         $set: { status: "completed" },
       },
       { new: true },
-    ),
-  );
+    );
+    // Start expensive guest preparation during selection, after live capture has finished.
+    for (const photo of completed?.photos || []) schedulePhotoDownload(completed._id, photo);
+    return completed;
+  });
 }
 // Máy chụp bị tắt / mất mạng trước khi bấm "Hoàn thành": máy chủ tự chốt phiên
 // sau khi hết giờ một chút để khách vẫn mở được album bằng mã vé.

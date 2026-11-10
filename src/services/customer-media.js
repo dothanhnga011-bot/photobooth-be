@@ -17,6 +17,7 @@ function bookingFiles(booking, jobs) {
     booking.video?.file,
     booking.composite?.file,
     booking.composite?.thumbnailFile,
+    booking.composite?.previewFile,
     ...jobs.flatMap(jobFiles),
   ].filter(Boolean))];
 }
@@ -32,7 +33,7 @@ export async function listCustomerMedia({ db = mongoose.connection.db } = {}) {
       { "composite.file": { $exists: true } },
     ] })
       .select("code name phone status createdAt photos._id photos.deleted photos.file photos.originalFile " +
-        "photos.thumbnailFile photos.previewFile photos.printFile photos.downloadFile video.file composite.file composite.thumbnailFile")
+        "photos.thumbnailFile photos.previewFile photos.printFile photos.downloadFile video.file composite.file composite.thumbnailFile composite.previewFile")
       .lean(),
     PrintJob.find().select("booking status file sheets.file").lean(),
   ]);

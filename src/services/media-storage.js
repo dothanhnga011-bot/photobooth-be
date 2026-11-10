@@ -147,10 +147,11 @@ export async function getStorageSummary({
         $or: [
           { "photos.0": { $exists: true } },
           { "video.file": { $exists: true } },
+          { "composite.file": { $exists: true } },
         ],
       })
         .select(
-          "photos._id photos.file photos.originalFile photos.thumbnailFile photos.previewFile photos.printFile photos.downloadFile video.file mediaExpiresAt",
+          "photos._id photos.file photos.originalFile photos.thumbnailFile photos.previewFile photos.printFile photos.downloadFile video.file composite.file composite.thumbnailFile composite.previewFile mediaExpiresAt",
         )
         .lean(),
       PrintJob.find().select("file sheets.file createdAt fileExpiresAt").lean(),
@@ -203,6 +204,12 @@ export async function getStorageSummary({
         photoTime(photo) + MEDIA_TTL_MS,
       );
     addNames(names.videos, [booking.video?.file]);
+    addNames(names.photos, [booking.composite?.file]);
+    addNames(names.thumbnails, [booking.composite?.thumbnailFile, booking.composite?.previewFile]);
+    const compositeFiles = [booking.composite?.file, booking.composite?.thumbnailFile, booking.composite?.previewFile];
+    const sharedExpiry = photos.length ? Math.max(...photos.map(photoTime)) + MEDIA_TTL_MS : booking.mediaExpiresAt?.getTime();
+    addImageExpiry(compositeFiles, sharedExpiry);
+    if (sharedExpiry <= now.getTime()) addNames(expiredNames, compositeFiles);
     expiredPhotos += old.length;
     addNames(
       expiredNames,

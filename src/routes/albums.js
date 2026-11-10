@@ -65,7 +65,8 @@ async function* readFiles(items) {
 // Web nội bộ: khách chỉ mở album bằng mã QR hiện trên máy chụp (mã truy cập 48 ký tự),
 // không có trang tra cứu công khai bằng mã vé 6 số.
 albumsRouter.get("/:token", async (req, res) => {
-  const json = await albumBooking(await album(req));
+  const booking = await timed(res, "album-read", album(req));
+  const json = await timed(res, "album-links", albumBooking(booking));
   // Carries short-lived storage links: never kept by a shared cache. Polls in the same link
   // window send the same body, so the browser revalidates (ETag) and gets an empty 304.
   res.set("Cache-Control", "private, no-cache");
@@ -101,7 +102,7 @@ albumsRouter.get("/:token/photos/:photo", async (req, res) => {
   );
   const download = req.query.download === "1";
   if (download) res.set("Cache-Control", "private, no-store");
-  const file = download ? await photoDownloadFile(b._id, p) : photoFile(p, req.query.size);
+  const file = download ? await timed(res, "guest-file", photoDownloadFile(b._id, p)) : photoFile(p, req.query.size);
   if (download) res.attachment(`NXC-${b.code}-${p.number ? String(p.number).padStart(2, "0") : p._id}.jpg`);
   await sendMedia(req, res, file, "image/jpeg", photoExpiry(p));
 });
@@ -122,9 +123,9 @@ albumsRouter.get("/:token/composite", async (req, res) => {
   if (!b.composite?.file || b.mediaDeleted) fail(404, "Album chưa có ảnh ghép khung.");
   if (req.query.download === "1") res.attachment(`NXC-${b.code}-anh-ghep.jpg`);
   res.set("Cache-Control", "private, max-age=600");
-  const file = req.query.size === "thumbnail" && req.query.download !== "1"
-    ? b.composite.thumbnailFile || b.composite.file
-    : b.composite.file;
+  const file = req.query.download === "1" ? b.composite.file
+    : req.query.size === "preview" ? b.composite.previewFile || b.composite.file
+      : req.query.size === "thumbnail" ? b.composite.thumbnailFile || b.composite.file : b.composite.file;
   await sendMedia(req, res, file, "image/jpeg", albumMediaExpiry(b));
 });
 albumsRouter.get("/:token/download", async (req, res) => {

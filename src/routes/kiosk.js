@@ -10,7 +10,7 @@ import { Booking, Room, Package, KioskAttempt, Setting } from "../models/index.j
 import { extraPriceFor, INSTAX_SHEETS, minSheets, piecesPerSheet, saleTotal } from "./print-count.js";
 import { instaxState, readPrinterStatus } from "../services/printer-status.js";
 import { appendCapture, finishCapture } from "../services/capture.js";
-import { timed } from "../services/image-save-queue.js";
+import { timed, saveImageTask } from "../services/image-save-queue.js";
 import { directUploadRequest, photoBody, readPhotoUpload, storedOriginal } from "./photo-upload.js";
 import {
   createDirectUpload,
@@ -471,28 +471,48 @@ kioskRouter.post("/composite", compositeBody, async (req, res) => {
   if (meta?.format !== "jpeg" || !meta.width || !meta.height || Math.max(meta.width, meta.height) > 9000 ||
     meta.width * meta.height > 20_000_000)
     fail(400, "Ảnh ghép phải là JPEG (tối đa 20 MP và 9000 px mỗi cạnh).");
-  const thumbnail = await sharp(req.body)
-    .resize({ width: 720, height: 720, fit: "inside", withoutEnlargement: true })
-    .jpeg({ quality: 84, mozjpeg: true })
-    .toBuffer();
+  const { preview, thumbnail } = await saveImageTask(async () => {
+    const preview = await sharp(req.body, { limitInputPixels: 20_000_000 })
+      .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+      .withIccProfile("srgb").jpeg({ quality: 88, chromaSubsampling: "4:4:4" }).toBuffer();
+    const thumbnail = await sharp(preview)
+      .resize({ width: 720, height: 720, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 84 }).toBuffer();
+    return { preview, thumbnail };
+  });
   const name = crypto.randomUUID();
   const file = mediaReference(`${name}.jpg`);
   const thumbnailFile = mediaReference(`${name}.thumb.jpg`);
-  await Promise.all([
+  const previewFile = mediaReference(`${name}.preview.jpg`);
+  const writes = await Promise.allSettled([
     saveMedia(file, req.body, "image/jpeg"),
     saveMedia(thumbnailFile, thumbnail, "image/jpeg"),
+    saveMedia(previewFile, preview, "image/jpeg"),
   ]);
-  const old = await Booking.findOneAndUpdate(
-    { _id: b._id },
-    {
-      $set: {
-        composite: { file, thumbnailFile, frameName, width: meta.width, height: meta.height },
-        // Xếp hạng chủ đề ở Tổng quan tính cả lượt không in.
-        ...(frameName && { frameName }),
+  const failed = writes.find((result) => result.status === "rejected");
+  if (failed) {
+    await deleteMedia([file, thumbnailFile, previewFile]).catch(() => {});
+    throw failed.reason;
+  }
+  let old;
+  try {
+    old = await Booking.findOneAndUpdate(
+      { _id: b._id },
+      {
+        $set: {
+          composite: { file, thumbnailFile, previewFile, frameName, width: meta.width, height: meta.height },
+          // Xếp hạng chủ đề ở Tổng quan tính cả lượt không in.
+          ...(frameName && { frameName }),
+        },
       },
-    },
-  ).select("composite");
-  const stale = [old?.composite?.file, old?.composite?.thumbnailFile].filter((f) => f && f !== file && f !== thumbnailFile);
+    ).select("composite");
+    if (!old) fail(404, "Không tìm thấy album.");
+  } catch (error) {
+    await deleteMedia([file, thumbnailFile, previewFile]).catch(() => {});
+    throw error;
+  }
+  const stale = [old?.composite?.file, old?.composite?.thumbnailFile, old?.composite?.previewFile]
+    .filter((f) => f && ![file, thumbnailFile, previewFile].includes(f));
   if (stale.length) await deleteMedia(stale).catch(() => {});
   res.status(201).json({ ok: true, width: meta.width, height: meta.height });
 });

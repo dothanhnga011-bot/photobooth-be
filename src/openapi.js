@@ -651,11 +651,11 @@ export const openapi = {
     "/api/albums/{token}/composite": {
       get: {
         tags: ["Album khách"],
-        summary: "Ảnh đã ghép khung ở máy chụp (?size=thumbnail bản xem nhanh 720 px; ?download=1 để tải về)",
+        summary: "Ảnh ghép: xem nhanh 1600 px, ảnh nhỏ 720 px, hoặc tải bản đầy đủ",
         parameters: [
           tokenParam,
-          query("size", "thumbnail: bản xem nhanh", { type: "string", enum: ["thumbnail"] }),
-          query("download", "1 = tải về máy", { type: "string" }),
+          query("size", "preview: ảnh xem 1600 px; thumbnail: ảnh nhỏ 720 px; thiếu bản xem thì dùng file cũ.", { type: "string", enum: ["thumbnail", "preview"] }),
+          query("download", "1 = tải bản đầy đủ, luôn bỏ qua size", { type: "string" }),
         ],
         responses: {
           200: { description: "Ảnh JPEG", content: { "image/jpeg": { schema: { type: "string", format: "binary" } } } },

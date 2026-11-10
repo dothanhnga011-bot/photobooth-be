@@ -53,6 +53,7 @@ export async function albumBooking(b, now = Date.now()) {
     const links = await mediaLinks({
       original: b.composite.file,
       thumbnail: b.composite.thumbnailFile || b.composite.file,
+      preview: b.composite.previewFile || b.composite.file,
     }, expiresAt, "image/jpeg", now);
     if (links) json.composite.links = links;
   }

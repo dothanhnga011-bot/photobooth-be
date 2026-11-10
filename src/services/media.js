@@ -288,7 +288,7 @@ export async function purgeExpiredMedia(now = new Date()) {
     // Video và ảnh ghép khung xóa cùng ảnh cuối cùng của album.
     const video = keep.length
       ? []
-      : [b.video?.file, b.composite?.file, b.composite?.thumbnailFile].filter(Boolean);
+      : [b.video?.file, b.composite?.file, b.composite?.thumbnailFile, b.composite?.previewFile].filter(Boolean);
     if (!old.length && !video.length) continue;
     changed++;
     await deleteMedia([
