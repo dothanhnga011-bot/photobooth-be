@@ -3,7 +3,8 @@ param(
   [Parameter(Mandatory=$true)][string]$Manifest,
   # on = khung nhỏ: máy DNP cắt đôi tờ 1200 x 1800 thành 2 dải 5 x 15 cm ("2inch cut" chỉ cho lệnh này);
   # off = khung to: in nguyên tờ 10 x 15; keep = giữ cài đặt sẵn của hàng in.
-  [ValidateSet('on', 'off', 'keep')][string]$Cut = 'keep'
+  [ValidateSet('on', 'off', 'keep')][string]$Cut = 'keep',
+  [string]$OutputSettingsPath = ''
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Drawing
@@ -122,7 +123,7 @@ $paper = @($document.PrinterSettings.PaperSizes | Where-Object {
 if ($paper) { $document.DefaultPageSettings.PaperSize = $paper }
 $document.DefaultPageSettings.Landscape = $false
 $document.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0,0,0,0)
-$outputSettings = Get-Rx1OutputSettings
+$outputSettings = if ($OutputSettingsPath) { Get-Rx1OutputSettings $OutputSettingsPath } else { Get-Rx1OutputSettings }
 if ($outputSettings.warning) { Write-Output $outputSettings.warning }
 if ($outputSettings.maxResolution) { Set-Rx1MaximumResolution $document.PrinterSettings $document.DefaultPageSettings }
 $script:printGamma = $outputSettings.gamma

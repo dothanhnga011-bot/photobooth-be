@@ -55,6 +55,10 @@ const int = (description, extra = {}) => ({
   ...extra,
 });
 const bool = (description) => ({ type: "boolean", description });
+const rx1Output = object({
+  gamma: { type: "number", minimum: 0.85, maximum: 1.5, multipleOf: 0.01, description: "Độ tối bản in; mặc định 1.50" },
+  maxResolution: bool("Dùng DPI cao nhất driver hỗ trợ"),
+}, ["gamma", "maxResolution"]);
 const enumOf = (values, description) => ({
   type: "string",
   enum: values,
@@ -1032,6 +1036,15 @@ export const openapi = {
     },
 
     // ── Máy chụp ──
+    "/api/print-agent/output-settings/sync": {
+      post: {
+        tags: ["Máy in tại tiệm"],
+        summary: "Bộ in RX1 báo mức đang dùng và nhận cấu hình màu từ web",
+        description: "Cần Bearer mã máy in riêng của phòng. Chỉ đồng bộ cấu hình, không nhận hoặc phát lệnh in. rx1Output: null khi quản trị chưa lưu cấu hình chung.",
+        requestBody: body({ applied: rx1Output }, ["applied"]),
+        responses: { ...ok("{ rx1Output: { gamma, maxResolution } | null }"), ...errors(400, 403) },
+      },
+    },
     "/api/print-agent/claim": {
       post: {
         tags: ["Máy in tại tiệm"],
@@ -1678,6 +1691,17 @@ export const openapi = {
           ...ok("Mã máy in", object({ token: { type: "string" }, name: { type: "string" }, branch: { type: "string" } })),
           ...errors(400, 401, 403, 404, 409),
         },
+      },
+    },
+    "/api/admin/settings/rx1-output": {
+      get: {
+        tags: ["Thiết lập"], summary: "Đọc cấu hình màu in RX1", description: adminOnly,
+        responses: { ...ok("{ configured, settings: { gamma, maxResolution } }"), ...errors(401, 403) },
+      },
+      put: {
+        tags: ["Thiết lập"], summary: "Lưu cấu hình màu in RX1 cho mọi máy DNP", description: adminOnly,
+        requestBody: { required: true, ...json(rx1Output) },
+        responses: { ...ok("Cấu hình đã lưu; bộ in cập nhật nhận ở lần đồng bộ kế tiếp"), ...errors(400, 401, 403) },
       },
     },
     "/api/admin/settings/kiosk": {

@@ -12,6 +12,7 @@ import { publicJob } from "./print-helpers.js";
 import { fail, id } from "./validation.js";
 import { printBody } from "./print-upload.js";
 import { submitPrintPack } from "./albums.js";
+import { getRx1Output, noteRx1Output, rx1OutputSchema } from "../services/rx1-output.js";
 
 export const printAgentRouter = Router();
 const LEASE_MS = 5 * 60 * 1000;
@@ -41,6 +42,13 @@ printAgentRouter.use((req, res, next) => {
 const scopeFilter = (req, branch) => (req.printScope ? { room: req.printScope.room } : { branch });
 
 const PRINT_SIZES = ["full", "strip", "instax"];
+// Configuration/acknowledgement only. This never claims, prints, archives, or charges a sheet.
+printAgentRouter.post("/output-settings/sync", async (req, res) => {
+  if (!req.printScope) fail(403, "Đồng bộ màu RX1 cần mã máy in riêng của phòng.");
+  const { applied } = z.object({ applied: rx1OutputSchema }).strict().parse(req.body);
+  await noteRx1Output(req.printScope, applied);
+  res.json({ rx1Output: await getRx1Output() });
+});
 // Authenticated room agent reserves/stores a local print without ever putting it in the claim queue.
 // Only the first response includes a lease. A retry cannot print an uncertain physical result twice.
 printAgentRouter.post("/direct/:token", printBody, async (req, res) => {

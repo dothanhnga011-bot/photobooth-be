@@ -65,6 +65,11 @@ Trang Swagger chạy cùng địa chỉ với máy chủ nên được phép g�
   đã hoàn tất/hủy, quá hạn và không còn media/lệnh in được dọn tên, số điện thoại, token album và dữ liệu phiên chụp.
   Giữ sổ bán hàng (mã, ngày, chi nhánh, gói, tiền, hình thức thu, tiền bán thêm, số tờ) và khoá chống tính tiền lặp
   để báo cáo/đối soát không đổi. Không xoá vé đang chụp hay lịch hẹn tương lai.
+- **Thiết lập → Màu in RX1**: quản trị lưu gamma 0.85–1.50 và mức DPI qua
+  `GET/PUT /api/admin/settings/rx1-output`. Bộ in phòng đã cập nhật dùng
+  `POST /api/print-agent/output-settings/sync` để nhận cấu hình và báo mức đang áp dụng;
+  endpoint chỉ đồng bộ, không tạo/nhận lệnh in hay cộng tiền. Chưa lưu trên web thì giữ cấu hình riêng,
+  mất mạng thì bộ in dùng mức đã nhận gần nhất. Backend Windows cũng dùng cấu hình web khi gửi tờ in.
 - Chỉ quản trị viên xem tiền: doanh thu, báo cáo theo tháng, tổng tiền từng vé (máy chủ không gửi các số này cho
   lễ tân). Lễ tân chỉ thấy số tiền cần thu khi tạo mã / bán thêm tờ in.
 - Lễ tân vào **Phòng & chi nhánh** để xem phòng đang hoạt động và mở/cài kiosk: `GET /api/admin/rooms`

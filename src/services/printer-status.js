@@ -99,6 +99,7 @@ export async function listPrinterStatus(branch) {
         roomName: names.get(row.value.room)?.name || "",
         ...describe(row.value),
         dnp: row.value.dnp || null,
+        rx1Output: row.value.rx1Output || null,
       })),
   ];
 }

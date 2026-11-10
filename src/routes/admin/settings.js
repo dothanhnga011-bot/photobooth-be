@@ -3,12 +3,23 @@ import { z } from "zod";
 import { Setting } from "../../models/index.js";
 import { admin } from "../../middleware/auth.js";
 import { text, priceVND } from "../validation.js";
+import { DEFAULT_RX1_OUTPUT, getRx1Output, rx1OutputSchema } from "../../services/rx1-output.js";
 
 export const settingsRouter = Router();
 
 settingsRouter.get("/", admin, async (req, res) =>
   res.json((await Setting.findOne({ key: "studio" }))?.value || {}),
 );
+
+settingsRouter.get("/rx1-output", admin, async (req, res) => {
+  const settings = await getRx1Output();
+  res.json({ configured: Boolean(settings), settings: settings || DEFAULT_RX1_OUTPUT });
+});
+settingsRouter.put("/rx1-output", admin, async (req, res) => {
+  const settings = rx1OutputSchema.parse(req.body);
+  await Setting.findOneAndUpdate({ key: "studio" }, { $set: { "value.rx1Output": settings } }, { upsert: true });
+  res.json({ configured: true, settings });
+});
 
 // Only the extra-sheet prices (admins only): a 10 × 15 sheet and an Instax Wide print. The rest of
 // the studio settings are left exactly as they are.

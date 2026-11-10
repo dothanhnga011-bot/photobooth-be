@@ -7,6 +7,7 @@ import { readMedia } from "./media.js";
 import { deviceMessage } from "./messages.js";
 import { printExtension } from "./print-image.js";
 import { config, root } from "../config.js";
+import { getRx1Output } from "./rx1-output.js";
 let queue = Promise.resolve();
 export function dispatchPrint(job) {
   // Instax prints only through the print agent next to the printer (Bluetooth).
@@ -43,6 +44,9 @@ export function dispatchPrint(job) {
         }
         const manifest = path.join(directory, "manifest.json");
         await fs.writeFile(manifest, JSON.stringify(files));
+        const output = await getRx1Output();
+        const outputPath = path.join(directory, "rx1-output.json");
+        if (output) await fs.writeFile(outputPath, JSON.stringify(output));
         await new Promise((resolve, reject) => {
           const child = spawn(
             "powershell.exe",
@@ -57,6 +61,7 @@ export function dispatchPrint(job) {
               manifest,
               "-Cut",
               strip ? "on" : "off",
+              ...(output ? ["-OutputSettingsPath", outputPath] : []),
             ],
             { windowsHide: true },
           );
