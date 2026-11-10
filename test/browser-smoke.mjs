@@ -276,13 +276,10 @@ try {
     0,
     "Không có ô chọn ngày giờ: mã dùng trong ngày",
   );
-  // Tên và số điện thoại khách bắt buộc; không còn ô gợi ý phòng.
+  // Phiếu không cần tên / số điện thoại khách và không có ô gợi ý phòng.
   assert.equal(await ticket.locator("select[name=room]").count(), 0);
-  await ticket.getByRole("button", { name: "Tạo phiếu chụp" }).click();
-  await ticket.getByText("Vui lòng nhập tên khách.").waitFor();
-  await ticket.getByText("Vui lòng nhập số điện thoại khách.").waitFor();
-  await ticket.locator("input[name=name]").fill("Khách thử");
-  await ticket.locator("input[name=phone]").fill("0388123456");
+  assert.equal(await ticket.locator("input[name=name], input[name=phone]").count(), 0);
+  assert.equal(await ticket.getByText("Dùng để tra cứu lại album của khách.").count(), 0);
   // Phản hồi của máy chủ bị mất đúng một lần: bấm lại phải ra cùng một phiếu.
   let loseDraftResponse = true;
   await counter.route("**/api/admin/tickets/draft", async (route) => {
@@ -301,9 +298,11 @@ try {
     .waitFor();
   await draft.click();
   await counter.getByRole("dialog", { name: "Chờ xác nhận đã thu" }).waitFor();
-  assert.equal(await Booking.countDocuments({ name: "Khách thử" }), 1);
+  assert.equal(await Booking.countDocuments({ source: "counter" }), 1);
   // Phiếu mới chỉ ghi nhận gói: chưa có mã 6 số, chưa thu tiền.
-  const pending = await Booking.findOne({ name: "Khách thử" });
+  const pending = await Booking.findOne({ source: "counter" });
+  assert.equal(pending.name, "");
+  assert.equal(pending.phone, "");
   assert.equal(pending.status, "pending");
   assert.equal(pending.paid, false);
   assert.equal(pending.code, undefined);
@@ -332,10 +331,10 @@ try {
   await activate.click();
   await counter.getByRole("dialog", { name: "Mã chụp đã sẵn sàng" }).waitFor();
   await noOverflow(counter);
-  const booking = await Booking.findOne({ name: "Khách thử" }).select(
+  const booking = await Booking.findById(pending._id).select(
     "+accessToken",
   );
-  assert.equal(await Booking.countDocuments({ name: "Khách thử" }), 1);
+  assert.equal(await Booking.countDocuments({ source: "counter" }), 1);
   assert.equal(booking.status, "confirmed");
   assert.equal(booking.paid, true);
   assert.equal(booking.paymentMethod, "transfer");
@@ -641,7 +640,7 @@ try {
   await menu(admin, "Đơn hàng").click();
   const order = admin.locator("article.order-card", { hasText: `#${booking.code}` });
   await order.waitFor();
-  assert.match(await order.innerText(), /Khách thử/);
+  assert.match(await order.innerText(), /Khách tại quầy/);
   assert.match(await order.innerText(), /Chuyển khoản/);
   assert.match(await order.innerText(), /1\/1 tờ/);
   assert.match(await order.innerText(), /Hồng/);

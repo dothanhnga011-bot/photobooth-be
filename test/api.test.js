@@ -195,7 +195,7 @@ test("the removed activity log API is unavailable to admin and staff", async () 
   await staff.get("/api/admin/audit").expect(404);
 });
 test("only staff issue paid walk-in codes; multiple customers need no time slot", async () => {
-  const d = { ...bookingData(), total: 1, date: "2020-01-01", time: "01:00" };
+  const d = { ...bookingData(), name: undefined, phone: undefined, total: 1, date: "2020-01-01", time: "01:00" };
   await request(app).post("/api/admin/tickets").send(d).expect(401);
   // Web nội bộ: không còn đặt lịch, tra cứu mã vé hay tự hủy vé công khai.
   for (const [method, path] of [
@@ -206,13 +206,17 @@ test("only staff issue paid walk-in codes; multiple customers need no time slot"
     await request(app)[method](path).send({ code: "123456" }).expect(404);
   const responses = await Promise.all([
     staff.post("/api/admin/tickets").send(d),
-    staff.post("/api/admin/tickets").send({ ...d, requestKey: randomUUID() }),
+    staff.post("/api/admin/tickets").send({ ...d, name: " ", phone: "", requestKey: randomUUID() }),
   ]);
   assert.deepEqual(
     responses.map((r) => r.status),
     [201, 201],
   );
   const b = responses[0].body;
+  assert.equal(b.name, "");
+  assert.equal(b.phone, "");
+  assert.equal(responses[1].body.name, "");
+  assert.equal(responses[1].body.phone, "");
   assert.notEqual(b.code, responses[1].body.code);
   assert.equal(b.total, 120000);
   assert.equal(b.paid, true);
@@ -225,17 +229,16 @@ test("only staff issue paid walk-in codes; multiple customers need no time slot"
     .expect(200);
   assert.equal(album.body.code, b.code, "the QR link opens the ticket album");
   await request(app).post(`/api/albums/${b.accessToken}/cancel`).expect(404);
-  // Tên và số điện thoại khách bắt buộc ở cả cấp mã trực tiếp.
-  const anonymous = await staff
+  // Thông tin khách có thể bỏ trống; dữ liệu gửi kèm vẫn phải hợp lệ.
+  await staff
     .post("/api/admin/tickets")
-    .send({ ...bookingData(), name: "", phone: "" })
+    .send({ ...bookingData(), name: "A".repeat(101) })
     .expect(400);
-  assert.match(anonymous.body.message, /tên khách/);
-  const noPhone = await staff
+  const invalidPhone = await staff
     .post("/api/admin/tickets")
-    .send({ ...bookingData(), phone: undefined })
+    .send({ ...bookingData(), phone: "invalid" })
     .expect(400);
-  assert.match(noPhone.body.message, /số điện thoại khách/);
+  assert.match(invalidPhone.body.message, /điện thoại/);
   await staff
     .post("/api/admin/tickets")
     .send({ ...bookingData(), paymentReceived: false })
@@ -244,26 +247,27 @@ test("only staff issue paid walk-in codes; multiple customers need no time slot"
 
 test("unpaid drafts have no usable code; activation is idempotent and starts the two-hour expiry", async () => {
   const requestKey = randomUUID();
-  const sale = { name: "Draft A", phone: "0388123456", room: String(room._id), package: String(pack._id),
+  const sale = { room: String(room._id), package: String(pack._id),
     requestKey, expectedTotal: pack.price };
-  // Tên và số điện thoại khách bắt buộc khi tạo phiếu tại quầy.
-  const noName = await staff.post("/api/admin/tickets/draft")
-    .send({ ...sale, name: " ", requestKey: randomUUID() }).expect(400);
-  assert.match(noName.body.message, /tên khách/);
-  const noPhone = await staff.post("/api/admin/tickets/draft")
-    .send({ ...sale, phone: "", requestKey: randomUUID() }).expect(400);
-  assert.match(noPhone.body.message, /số điện thoại khách/);
+  // Tạo phiếu không cần thông tin khách; nếu gửi kèm thì vẫn kiểm tra định dạng.
   await staff.post("/api/admin/tickets/draft")
-    .send({ ...sale, phone: undefined, requestKey: randomUUID() }).expect(400);
+    .send({ ...sale, name: "A".repeat(101), requestKey: randomUUID() }).expect(400);
+  await staff.post("/api/admin/tickets/draft")
+    .send({ ...sale, phone: "invalid", requestKey: randomUUID() }).expect(400);
   const first = await staff.post("/api/admin/tickets/draft").send(sale).expect(201);
   const second = await staff.post("/api/admin/tickets/draft")
-    .send({ ...sale, name: "Draft B", requestKey: randomUUID() }).expect(201);
+    .send({ ...sale, name: "Draft B", phone: "0388123456", requestKey: randomUUID() }).expect(201);
   try {
+    assert.equal(first.body.name, "");
+    assert.equal(first.body.phone, "");
+    assert.equal(second.body.name, "Draft B");
+    assert.equal(second.body.phone, "0388123456");
     assert.equal(first.body.code, undefined);
     assert.equal(first.body.accessToken, undefined);
     assert.equal(first.body.paid, false);
     assert.equal(second.body.code, undefined, "more than one unpaid draft can exist");
     assert.equal((await staff.post("/api/admin/tickets/draft").send(sale).expect(200)).body._id, first.body._id);
+    assert.equal((await staff.post("/api/admin/tickets/draft").send({ ...sale, name: "", phone: "" }).expect(200)).body._id, first.body._id);
     await staff.post("/api/admin/tickets/draft").send({ ...sale, name: "Changed" }).expect(409);
     const device = jwt.sign({ type: "kiosk", room: String(room._id) }, config.secret);
     await request(app).post("/api/kiosk/claim")
