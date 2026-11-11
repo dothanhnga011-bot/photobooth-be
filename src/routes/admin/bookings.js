@@ -2,20 +2,21 @@ import { Router } from "express";
 import { z } from "zod";
 import { Booking, PrintJob, Room, Setting } from "../../models/index.js";
 import { allow, can, hideMoney, requireBranch, staffBranch } from "../../middleware/auth.js";
-import { livePrintFilter, photoExpiry } from "../../services/media.js";
+import { livePrintFilter, photoExpiry, MEDIA_TTL_MS } from "../../services/media.js";
+import { visibleBookingHistory } from "../../services/booking-history.js";
 import { fail, id, date } from "../validation.js";
 import { KIOSK_LIVE_MS } from "../kiosk-session.js";
 import { publicJob } from "../print-helpers.js";
 import { extraPriceFor } from "../print-count.js";
 
 export const bookingsRouter = Router();
-// Đơn hàng xem theo khoảng ngày (mặc định cả tháng này): tối đa bấy nhiêu đơn mới nhất.
+// Operational order history is retained for the same period as customer media.
 export const BOOKING_RANGE_LIMIT = 2000;
 const LIST_OMIT = "-photos -cashBills -extraSales -captureSeenAt -captureStartedAt -captureEndsAt " +
   "-nextPhotoNumber -codeExpiresAt -updatedAt";
 
 bookingsRouter.get("/bookings", async (req, res) => {
-  const q = {};
+  const q = visibleBookingHistory(new Date(), MEDIA_TTL_MS);
   const assigned = staffBranch(req);
   if (assigned) q.branch = assigned;
   if (req.query.code)
@@ -117,6 +118,7 @@ bookingsRouter.patch("/bookings/:id", async (req, res) => {
   const b = await Booking.findById(id.parse(req.params.id));
   if (!b) fail(404, "Không tìm thấy vé.");
   requireBranch(req, b.branch);
+  if (b.customerDataDeletedAt) fail(410, "Đơn đã hết hạn lưu lịch sử; số tiền vẫn được giữ trong báo cáo thu chi.");
   if (d.status === "cancelled" && !can(req, "orders:cancel"))
     fail(403, "Chỉ chủ cửa hàng hoặc nhân viên được cấp quyền hủy đơn mới hủy được mã chụp.");
   const allowed = {
@@ -152,7 +154,7 @@ bookingsRouter.patch("/bookings/:id", async (req, res) => {
     changes.paid = false;
   }
   const updated = await Booking.findOneAndUpdate(
-    { _id: b._id, status: b.status },
+    { _id: b._id, status: b.status, customerDataDeletedAt: null },
     changes,
     { new: true },
   );

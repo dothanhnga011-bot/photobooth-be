@@ -11,6 +11,7 @@ import {
 } from "./r2.js";
 import Booking from "../models/Booking.js";
 import PrintJob from "../models/PrintJob.js";
+import { expiredBookingHistory } from "./booking-history.js";
 
 // New files use the configured store; opaque r2: references keep older GridFS
 // files readable throughout the transition. Never use ephemeral disk for writes.
@@ -330,12 +331,9 @@ export async function purgeExpiredMedia(now = new Date()) {
 // Sau khi hết thời hạn và không còn file/lệnh in, chỉ giữ sổ bán hàng và các khoá chống ghi nhận
 // tiền hai lần. Không xoá Booking: báo cáo theo ngày, ca, chi nhánh, gói và phương thức thu dựa vào đó.
 async function purgeExpiredCustomerData(now) {
-  const cutoff = new Date(now - MEDIA_TTL_MS);
   const eligible = {
+    ...expiredBookingHistory(now, MEDIA_TTL_MS),
     customerDataDeletedAt: null,
-    status: { $in: ["completed", "cancelled"] },
-    createdAt: { $lte: cutoff },
-    $or: [{ captureEndsAt: null }, { captureEndsAt: { $lte: cutoff } }],
     "photos.0": { $exists: false },
     "video.file": { $exists: false },
     "composite.file": { $exists: false },
@@ -343,7 +341,7 @@ async function purgeExpiredCustomerData(now) {
   const unset = Object.fromEntries([
     "name", "phone", "accessToken", "captureSession", "captureDiag", "captureSeenAt",
     "captureStartedAt", "captureEndsAt", "captureMode", "captureDuration", "countdownSeconds",
-    "selectCount", "shots", "nextPhotoNumber", "codeExpiresAt", "mediaExpiresAt", "requestedExtraPrints",
+    "selectCount", "shots", "nextPhotoNumber", "codeExpiresAt", "mediaExpiresAt", "requestedExtraPrints", "cashBills",
   ].map((key) => [key, 1]));
   // Join theo chỉ mục booking của PrintJob, đọc từng batch thay vì nạp mọi vé cũ vào RAM.
   const cursor = Booking.aggregate([

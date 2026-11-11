@@ -119,6 +119,7 @@ ticketsRouter.patch("/:id/activate", auth, async (req, res) => {
   const draft = await Booking.findById(bookingId).select("+accessToken");
   if (!draft || draft.source !== "counter") fail(404, "Không tìm thấy mã chụp tại quầy.");
   requireBranch(req, draft.branch);
+  if (draft.customerDataDeletedAt) fail(410, "Phiếu đã hết hạn lưu lịch sử. Vui lòng tạo phiếu mới.");
   if (String(draft.issuedBy) !== String(req.user._id) && req.user.role !== "admin")
     fail(403, "Chỉ người tạo mã hoặc quản trị viên được xác nhận thanh toán.");
   if (draft.total !== expectedTotal) fail(409, "Số tiền đã thay đổi. Vui lòng kiểm tra lại.");
@@ -134,7 +135,7 @@ ticketsRouter.patch("/:id/activate", auth, async (req, res) => {
     try {
       const now = new Date();
       const updated = await Booking.findOneAndUpdate(
-        { _id: bookingId, status: "pending", paid: false },
+        { _id: bookingId, status: "pending", paid: false, customerDataDeletedAt: null },
         { $set: {
           code: String(crypto.randomInt(100000, 1000000)),
           accessToken: token(),

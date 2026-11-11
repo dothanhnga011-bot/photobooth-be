@@ -62,7 +62,9 @@ Trang Swagger chạy cùng địa chỉ với máy chủ nên được phép g�
   lên** — riêng từng ảnh, ảnh cũ đi trước; album hết ảnh thì báo hết hạn. `mediaExpiresAt` của vé = lúc ảnh sớm nhất
   còn lại tự xóa; API trả `expiresAt` cho từng ảnh. **Mỗi lệnh in giữ cùng thời hạn 3 ngày kể từ lúc khách gửi** (đã in hay chưa),
   rồi xóa cùng file tờ in; hàng chờ in chỉ hiện lệnh còn hạn, kèm `expiresAt`. Việc dọn chạy 15 phút/lần. Thông tin vé
-  đã hoàn tất/hủy, quá hạn và không còn media/lệnh in được dọn tên, số điện thoại, token album và dữ liệu phiên chụp.
+  quá hạn và không còn media/lệnh in được dọn tên, số điện thoại, token album, dữ liệu phiên chụp và sự kiện từng tờ tiền.
+  Phiếu nháp bỏ dở và mã đã thanh toán nhưng hết hạn chưa dùng cũng được dọn; không thu tiền lại từ phiếu đã dọn.
+  API Đơn hàng loại lịch sử hết hạn ngay cả khi tác vụ dọn chưa tới lượt, đồng thời bỏ các bản ghi đã dọn.
   Giữ sổ bán hàng (mã, ngày, chi nhánh, gói, tiền, hình thức thu, tiền bán thêm, số tờ) và khoá chống tính tiền lặp
   để báo cáo/đối soát không đổi. Không xoá vé đang chụp hay lịch hẹn tương lai.
 - **Thiết lập → Màu in RX1**: quản trị lưu gamma 1.00–2.20 (mặc định 1.50) và mức DPI qua

@@ -843,6 +843,28 @@ test("legacy tickets without a duration snapshot can still start", async () => {
   await Booking.deleteOne({ _id: b._id });
 });
 
+test("order history excludes expired and compacted records, including code and date searches, without deleting money", async () => {
+  const now = Date.now(), cutoff = now - MEDIA_TTL_MS;
+  const rows = await Booking.create([
+    { code: "991201", createdAt: new Date(cutoff - 60000), date: "2026-01-01", status: "completed", paid: true, total: 123000 },
+    { code: "991202", createdAt: new Date(cutoff + 60000), date: "2026-01-01", status: "completed", paid: true, total: 45000 },
+    { code: "991203", createdAt: new Date(now), date: "2026-01-01", status: "completed", paid: true, total: 67000, customerDataDeletedAt: new Date(now) },
+  ]);
+  try {
+    const ids = new Set(rows.map(b => String(b._id)));
+    for (const path of ["/api/admin/bookings", "/api/admin/bookings?from=2026-01-01&to=2026-01-01"]) {
+      const body = (await admin.get(path).expect(200)).body;
+      assert.deepEqual(body.filter(b => ids.has(b._id)).map(b => b.code), ["991202"]);
+    }
+    assert.deepEqual((await admin.get("/api/admin/bookings?code=991201").expect(200)).body, []);
+    assert.deepEqual((await admin.get("/api/admin/bookings?code=991203").expect(200)).body, []);
+    assert.equal(await Booking.countDocuments({ _id: { $in: [...ids] } }), 3);
+    const [money] = await Booking.aggregate([{ $match: { _id: { $in: rows.map(b => b._id) } } }, { $group: { _id: null, sum: { $sum: "$total" } } }]);
+    assert.equal(money.sum, 235000);
+    await admin.patch(`/api/admin/bookings/${rows[2]._id}`).send({ printed: true }).expect(410);
+  } finally { await Booking.deleteMany({ _id: { $in: rows.map(b => b._id) } }); }
+});
+
 test("a purchased shot limit is enforced on the server, including upload retries", async () => {
   const { b, session } = await startSession();
   try {

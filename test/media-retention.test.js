@@ -11,6 +11,7 @@ import { MEDIA_TTL_MS, photoExpiry, purgeExpiredMedia, readMedia, saveMedia } fr
 import { getMonthRevenue, getRevenueSeries, getSummary } from "../src/services/stats.js";
 import { statsCache } from "../src/services/read-cache.js";
 import { getStorageSummary } from "../src/services/media-storage.js";
+import { visibleBookingHistory } from "../src/services/booking-history.js";
 
 let memory;
 const hour = 3_600_000;
@@ -81,7 +82,9 @@ test("72-hour retention deletes every media variant and customer data while all 
   assert.equal(after.active, false);
   assert.equal(after.requestKey, b.requestKey, "sale retry cannot create another charge");
   assert.deepEqual(after.extraPrintKeys, ["extra-sale-key"]);
-  assert.deepEqual(after.cashBills.map((bill) => bill.amount), [100000]);
+  assert.equal(after.cashBills?.length || 0, 0, "individual bill events are removed");
+  assert.equal(after.cashReceived, 100000, "cash total is retained");
+  assert.equal(await Booking.countDocuments(visibleBookingHistory(expiredAt, MEDIA_TTL_MS)), 0);
   assert.deepEqual(await reports(), beforeReports);
   await request(app).get(`/api/albums/${b.accessToken}`).expect(404);
   assert.equal(await purgeExpiredMedia(expiredAt), 0, "second pass is idempotent");
@@ -122,6 +125,30 @@ test("remaining photos and live print files prevent early customer-data deletion
   await purgeExpiredMedia(new Date(now + MEDIA_TTL_MS));
   for (const row of [b, printOnly]) assert.equal((await Booking.findById(row._id)).name, undefined);
   assert.equal(await readMedia("print.png"), null);
+});
+
+test("expired unused codes and abandoned drafts lose customer history but retain their financial amounts", async () => {
+  const now = Date.now();
+  const expired = await Booking.create([
+    oldBooking(now, { status: "pending", paid: false, captureEndsAt: undefined }),
+    oldBooking(now, { status: "confirmed", captureEndsAt: undefined, codeExpiresAt: new Date(now - hour) }),
+  ]);
+  const protectedRows = await Booking.create([
+    oldBooking(now, { status: "confirmed", paidAt: new Date(now - hour), captureEndsAt: undefined }),
+    oldBooking(now, { status: "confirmed", codeExpiresAt: new Date(now + hour), captureEndsAt: undefined }),
+    oldBooking(now, { status: "pending", date: "2099-01-01", captureEndsAt: undefined }),
+  ]);
+  const visible = await Booking.find(visibleBookingHistory(new Date(now), MEDIA_TTL_MS)).lean();
+  assert.deepEqual(visible.map(b => String(b._id)).sort(), protectedRows.map(b => String(b._id)).sort(), "old history is hidden even before cleanup");
+  await purgeExpiredMedia(new Date(now));
+  for (const b of expired) {
+    const after = await Booking.findById(b._id).select("+accessToken").lean();
+    assert.equal(after.name, undefined);
+    assert.equal(after.accessToken, undefined);
+    assert.ok(after.customerDataDeletedAt);
+    assert.deepEqual([after.paid, after.total, after.paymentMethod, after.date], [b.paid, b.total, b.paymentMethod, b.date]);
+  }
+  for (const b of protectedRows) assert.equal((await Booking.findById(b._id)).name, b.name);
 });
 
 test("a storage deletion failure keeps customer data and references for the next successful cleanup", async () => {
