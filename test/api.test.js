@@ -863,6 +863,24 @@ test("a purchased shot limit is enforced on the server, including upload retries
   }
 });
 
+test("Polaroid ignores legacy shot quotas but still rejects captures after its session ends", async () => {
+  const { b, session } = await startSession();
+  try {
+    await Booking.updateOne({ _id: b._id }, { source: "polaroid", printSize: "instax", shots: 1 });
+    await request(app).post("/api/kiosk/start").send({ captureToken: session.captureToken }).expect(200);
+    const image = await jpeg(40, 30);
+    for (let i = 0; i < 12; i++) await request(app).post("/api/kiosk/photo")
+      .send({ captureToken: session.captureToken, image, clientKey: `polaroid-${i}` }).expect(200);
+    await request(app).post("/api/kiosk/photo")
+      .send({ captureToken: session.captureToken, image, clientKey: "polaroid-0" }).expect(200);
+    assert.equal((await Booking.findById(b._id)).photos.length, 12);
+    await Booking.updateOne({ _id: b._id }, { captureEndsAt: new Date(Date.now() - 1000) });
+    await request(app).post("/api/kiosk/photo")
+      .send({ captureToken: session.captureToken, image, clientKey: "polaroid-expired" }).expect(409);
+    assert.equal((await Booking.findById(b._id)).photos.length, 12);
+  } finally { await Booking.deleteOne({ _id: b._id }); }
+});
+
 test("frame moves normalize legacy order, keep themes separate and reject stale/concurrent lists", async () => {
   const frames = await Frame.create([
     { name: "pink", themeName: "Order test", order: 0, active: true },

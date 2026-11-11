@@ -336,15 +336,19 @@ export function appendCapture(
           _id: bookingId,
           status: imported ? "completed" : "checked_in",
           ...(clientKey && { "photos.clientKey": { $ne: clientKey } }),
-          ...(imported ? {} : { $expr: { $lt: [
-            { $size: { $filter: {
-              input: { $ifNull: ["$photos", []] }, as: "p",
-              cond: { $and: [
-                { $eq: ["$$p.kind", "original"] },
-                { $ne: ["$$p.deleted", true] },
-              ] },
-            } } },
-            { $ifNull: ["$shots", 1000000] },
+          ...(imported ? {} : { $expr: { $or: [
+            { $eq: ["$source", "polaroid"] },
+            { $eq: ["$printSize", "instax"] },
+            { $lt: [
+              { $size: { $filter: {
+                input: { $ifNull: ["$photos", []] }, as: "p",
+                cond: { $and: [
+                  { $eq: ["$$p.kind", "original"] },
+                  { $ne: ["$$p.deleted", true] },
+                ] },
+              } } },
+              { $ifNull: ["$shots", 1000000] },
+            ] },
           ] } }),
         },
         appendPhotoPipeline(photo),
@@ -362,7 +366,7 @@ export function appendCapture(
             .filter((f) => !kept.has(f)));
           return b;
         }
-        if (!imported && Number.isFinite(b.shots) &&
+        if (!imported && b.source !== "polaroid" && b.printSize !== "instax" && Number.isFinite(b.shots) &&
           b.photos.filter((p) => p.kind === "original" && !p.deleted).length >= b.shots)
           throw captureError(409, `Đã chụp đủ ${b.shots} ảnh của gói.`);
         throw captureError(409, "Phiên chụp đã kết thúc.");

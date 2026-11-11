@@ -4,7 +4,8 @@ import { z } from "zod";
 import { User, Room, Package, Frame, Sticker } from "../../models/index.js";
 import { admin, isAdmin, staffBranch, STAFF_PERMISSIONS } from "../../middleware/auth.js";
 import { fail, id, text, priceVND } from "../validation.js";
-import { INSTAX_SHEETS, leastSheets } from "../print-count.js";
+import { leastSheets } from "../print-count.js";
+import { polaroidDuration, polaroidPackage } from "../../polaroid-layouts.js";
 import { moveFrame, withFrameCatalogLock } from "../../services/frame-order.js";
 import {
   FRAME_LIST_FIELDS,
@@ -78,7 +79,7 @@ const resources = {
       duration: z.number().int().min(1).max(30),
       shots: z.number().int().min(0).max(40).default(12),
       countdownSeconds: z.number().int().min(1).max(30).default(10),
-      selectCount: z.number().int().min(1).max(12).default(4),
+      selectCount: z.number().int().min(1).max(12).optional(),
       printSize: z.enum(["full", "strip", "instax"]).default("full"),
       prints: z.number().int().min(0).max(20).optional(),
       branches: z
@@ -89,7 +90,11 @@ const resources = {
       active,
     }).superRefine((pack, ctx) => {
       // Layout Polaroid (khổ Instax): luôn in 1 tấm, chụp không giới hạn trong thời gian chụp.
-      if (pack.printSize === "instax") return;
+      if (pack.printSize === "instax") {
+        if (pack.selectCount !== undefined && !polaroidDuration(pack.selectCount))
+          ctx.addIssue({ code: "custom", path: ["selectCount"], message: "Polaroid chỉ chọn 1 ảnh (3 phút) hoặc 2 ảnh (5 phút)" });
+        return;
+      }
       if (pack.shots < 1)
         ctx.addIssue({ code: "custom", path: ["shots"], message: "phải từ 1 trở lên" });
       // Khách in tối thiểu 2 tờ: khổ nhỏ 1 tờ 10 × 15 cắt đôi, khổ to 2 tờ.
@@ -101,8 +106,9 @@ const resources = {
             ? "khổ nhỏ kèm ít nhất 1 tờ 10 × 15 (cắt đôi = 2 tờ nhỏ)"
             : "khổ to kèm ít nhất 2 tờ",
         });
-    // Layout Polaroid (khổ Instax): luôn in 1 tấm; tối đa `shots` lần bấm dây (mặc định 8).
-    }).transform((pack) => (pack.printSize === "instax" ? { ...pack, prints: INSTAX_SHEETS, shots: pack.shots || 8 } : pack)),
+    }).transform((pack) => polaroidPackage({
+      ...pack, selectCount: pack.selectCount ?? (pack.printSize === "instax" ? 1 : 4),
+    })),
   ],
   frames: [
     Frame,
@@ -201,7 +207,7 @@ for (const [route, [Model, schema]] of Object.entries(resources)) {
           ? (await query.select(FRAME_LIST_FIELDS).lean()).map(frameListItem)
           : route === "stickers"
             ? (await query.select(STICKER_LIST_FIELDS).lean()).map(stickerListItem)
-            : await query.lean(),
+            : route === "packages" ? (await query.lean()).map(polaroidPackage) : await query.lean(),
       );
     },
   );

@@ -434,20 +434,25 @@ test("packages print at least two pieces: one strip sheet cut in half, or two fu
   await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, printSize: "full", prints: 2 }).expect(200);
 });
 
-test("Instax: one print, a shutter quota, its own extra price, and the kiosk sells it only while the printer is ready", async () => {
-  const base = { name: "Gói Instax", description: "", price: 120000, duration: 5, active: true, printSize: "instax" };
+test("Instax: unlimited shots, fixed 3/5-minute packages, one print and its own extra price", async () => {
+  const base = { name: "Gói Instax", description: "", price: 120000, duration: 5, selectCount: 1, active: true, printSize: "instax" };
   // Layout Polaroid luôn in 1 tấm, không giới hạn số lần chụp: số gửi lên (hay không gửi) đều bỏ qua.
   const saved = (await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, prints: 4, shots: 30 }).expect(200)).body;
-  assert.deepEqual([saved.prints, saved.shots], [1, 30]);
-  // Không gửi số tấm: mặc định 8 tấm tự chụp.
-  assert.equal((await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, prints: 1, shots: 0 }).expect(200)).body.shots, 8);
+  assert.deepEqual([saved.prints, saved.shots, saved.duration, saved.selectCount], [1, 0, 3, 1]);
+  assert.equal((await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, prints: 1, shots: 0 }).expect(200)).body.shots, 0);
+  const large = (await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, selectCount: 2, duration: 22 }).expect(200)).body;
+  assert.deepEqual([large.duration, large.selectCount, large.shots], [5, 2, 0]);
+  await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, selectCount: 4 }).expect(400);
   await admin.put(`/api/admin/packages/${pack._id}`).send(base).expect(200);
   // Gói photobooth vẫn cần ít nhất 1 lần chụp.
   const noShots = await admin.put(`/api/admin/packages/${pack._id}`)
     .send({ ...base, printSize: "full", prints: 2, shots: 0 }).expect(400);
   assert.match(noShots.body.message, /Số lần chụp: phải từ 1 trở lên/);
   // Gói cũ còn ghi 2 tấm, 10 lần chụp: lượt Polaroid vẫn in 1 tấm, chụp không giới hạn.
-  await Package.updateOne({ _id: pack._id }, { $set: { prints: 2, shots: 10 } });
+  await Package.updateOne({ _id: pack._id }, { $set: { prints: 2, shots: 10, duration: 22 } });
+  const publicPack = (await request(app).get("/api/catalog").expect(200)).body.packages.find(p => p._id === String(pack._id));
+  const adminPack = (await admin.get("/api/admin/packages").expect(200)).body.find(p => p._id === String(pack._id));
+  for (const p of [publicPack, adminPack]) assert.deepEqual([p.duration, p.selectCount, p.shots, p.prints, p.price], [3, 1, 0, 1, 120000]);
   await admin.put(`/api/admin/rooms/${room._id}`).send({
     name: "Máy 1", description: "", branch: "Bắc Giang", kind: "polaroid", paymentTest: false, active: true,
   }).expect(200);
@@ -500,6 +505,17 @@ test("Instax: one print, a shutter quota, its own extra price, and the kiosk sel
   assert.deepEqual([stored.printSize, stored.prints, stored.total, stored.paid, stored.source, stored.status],
     ["instax", 1, 120000, false, "polaroid", "checked_in"]);
   assert.equal(stored.shots, undefined);
+  assert.deepEqual([stored.captureDuration, stored.selectCount], [3, 1]);
+  const smallStart = (await request(app).post("/api/kiosk/start").send({ captureToken: started.captureToken }).expect(200)).body.booking;
+  assert.equal(new Date(smallStart.captureEndsAt) - new Date(smallStart.captureStartedAt), 180000);
+  await Package.updateOne({ _id: pack._id }, { selectCount: 2, duration: 22 });
+  const largeSession = (await request(app).post("/api/kiosk/polaroid").send({ ...layout, requestKey: randomUUID() }).expect(201)).body;
+  assert.deepEqual([largeSession.booking.selectCount, largeSession.booking.captureDuration, largeSession.booking.shots], [2, 5, undefined]);
+  const largeStart = (await request(app).post("/api/kiosk/start").send({ captureToken: largeSession.captureToken }).expect(200)).body.booking;
+  assert.equal(new Date(largeStart.captureEndsAt) - new Date(largeStart.captureStartedAt), 300000);
+  // Replaying the old request after changing the package keeps its original 3 minutes.
+  const replaySmall = (await request(app).post("/api/kiosk/polaroid").send(layout).expect(200)).body;
+  assert.equal(replaySmall.booking.captureDuration, 3);
   // Không bán gói Instax bằng tiền mặt ở máy; nhân viên ghi nhận đã thu ở quầy.
   await request(app).post("/api/kiosk/sale").send({ ...layout, requestKey: randomUUID(), bills: [{ amount: 200000 }] }).expect(403);
   const collected = (await staff.patch(`/api/admin/bookings/${stored._id}`).send({ collected: "transfer" }).expect(200)).body;

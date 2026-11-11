@@ -25,6 +25,7 @@ import { deleteMedia, saveMedia } from "../services/media.js";
 import { mediaReference } from "../services/r2.js";
 import { fail, today, token } from "./validation.js";
 import { publicBooking } from "./booking-helpers.js";
+import { polaroidDuration } from "../polaroid-layouts.js";
 import {
   captureBooking,
   touchKiosk,
@@ -225,6 +226,8 @@ kioskRouter.post("/polaroid", sensitive(), async (req, res) => {
     fail(403, "Đây là phòng photobooth — khách chọn Nhập mã hoặc Tiền mặt. Đổi loại phòng ở Quản trị → Quản lý máy.");
   const pack = await Package.findOne({ _id: d.package, active: true });
   if (!pack || pack.printSize !== "instax") fail(400, "Layout không còn hoạt động.");
+  const duration = polaroidDuration(pack.selectCount);
+  if (!duration) fail(400, "Polaroid chỉ hỗ trợ ảnh nhỏ chọn 1 ảnh (3 phút) hoặc ảnh to chọn 2 ảnh (5 phút). Nhờ nhân viên sửa layout.");
   if (pack.branches?.length && !pack.branches.includes(room.branch))
     fail(400, `Layout “${pack.name}” không áp dụng tại chi nhánh ${room.branch}.`);
   const sessionId = token();
@@ -243,9 +246,9 @@ kioskRouter.post("/polaroid", sensitive(), async (req, res) => {
         // Không ghi số lần chụp: khách bấm dây không giới hạn trong thời gian chụp. Layout in đúng
         // 1 tấm Instax (gói cũ ghi 2 tấm cũng chỉ in 1).
         countdownSeconds: pack.countdownSeconds || 10,
-        selectCount: pack.selectCount || 4,
+        selectCount: pack.selectCount,
         printSize: "instax",
-        captureDuration: pack.duration,
+        captureDuration: duration,
         prints: INSTAX_SHEETS,
         total: Number(pack.price) || 0,
         discount: 0,
@@ -367,10 +370,10 @@ kioskRouter.post("/start", async (req, res) => {
     // Older tickets have no snapshot; only those fall back to the current package.
     if (!b.captureDuration) {
       const pack = await Package.findById(b.package);
-      b.captureDuration = pack?.duration || 10;
+      b.captureDuration = (b.printSize === "instax" ? polaroidDuration(b.selectCount) : null) || pack?.duration || 10;
     }
     b.captureStartedAt = new Date();
-    b.captureEndsAt = new Date(Date.now() + b.captureDuration * 60000);
+    b.captureEndsAt = new Date(b.captureStartedAt.getTime() + b.captureDuration * 60000);
     b.captureMode = "folder";
     b.captureSession = payload.sessionId;
     b.captureSeenAt = new Date();
