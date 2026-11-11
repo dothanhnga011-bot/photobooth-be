@@ -1,4 +1,4 @@
-param(
+﻿param(
   [Parameter(Mandatory=$true)][string]$PrinterName,
   [Parameter(Mandatory=$true)][string]$Manifest,
   # on = khung nhỏ: máy DNP cắt đôi tờ 1200 x 1800 thành 2 dải 5 x 15 cm ("2inch cut" chỉ cho lệnh này);
@@ -68,13 +68,23 @@ if ($Cut -ne 'keep') {
 }
 
 # Output compensation belongs to the printer only; camera files and QR downloads stay untouched.
+# sharpen: độ nét bản in 0–4 (0 = không làm nét); cấu hình cũ chưa có thì dùng mức 2.
+function ConvertTo-Rx1Sharpen($value) {
+  if ($null -eq $value -or $value -is [bool] -or $value -is [string]) { throw 'sharpen must be a whole number from 0 to 4' }
+  $number = [double]$value
+  if ([double]::IsNaN($number) -or $number -ne [Math]::Floor($number) -or $number -lt 0 -or $number -gt 4) {
+    throw 'sharpen must be a whole number from 0 to 4'
+  }
+  return [int]$number
+}
 function Get-Rx1OutputSettings([string]$settingsPath = (Join-Path $env:LOCALAPPDATA 'NXC-Printer\rx1-output.json')) {
-  $defaults = @{ gamma = 1.50; maxResolution = $true; warning = '' }
+  $defaults = @{ gamma = 1.50; maxResolution = $true; sharpen = 2; warning = '' }
   if (-not (Test-Path -LiteralPath $settingsPath)) { return $defaults }
   try {
     $profile = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
     $gammaValue = $defaults.gamma
     $maximum = $true
+    $sharpen = $defaults.sharpen
     if ($null -ne $profile.PSObject.Properties['gamma']) {
       if ($profile.gamma -is [bool]) { throw 'gamma must be a number' }
       $gammaValue = [double]$profile.gamma
@@ -84,11 +94,182 @@ function Get-Rx1OutputSettings([string]$settingsPath = (Join-Path $env:LOCALAPPD
       if ($profile.maxResolution -isnot [bool]) { throw 'maxResolution must be true or false' }
       $maximum = $profile.maxResolution
     }
-    return @{ gamma = $gammaValue; maxResolution = $maximum; warning = '' }
+    if ($null -ne $profile.PSObject.Properties['sharpen']) { $sharpen = ConvertTo-Rx1Sharpen $profile.sharpen }
+    return @{ gamma = $gammaValue; maxResolution = $maximum; sharpen = $sharpen; warning = '' }
   } catch {
-    $defaults.warning = "Invalid rx1-output.json; using gamma $($defaults.gamma) and maximum supported DPI: $($_.Exception.Message)"
+    $defaults.warning = "Invalid rx1-output.json; using gamma $($defaults.gamma) and maximum supported DPI, sharpness $($defaults.sharpen): $($_.Exception.Message)"
     return $defaults
   }
+}
+
+# ── Tờ in đúng lưới điểm của máy in + làm nét cho in nhiệt ──────────────────────────────────────────
+# Tờ in (vd. 2400 × 3600) được co MỘT lần bằng nội suy chất lượng cao về đúng số điểm thật của trang
+# máy in ở độ phân giải đang dùng (300 × 300 dpi: ~1240 × 1845; 300 × 600: ~1240 × 3690) rồi vẽ 1:1, để
+# driver DNP không phải co giãn nữa (co giãn của driver làm ảnh mềm / răng cưa). Sau đó làm nét trên độ
+# sáng (unsharp mask: không đổi màu, bỏ qua chênh lệch rất nhỏ để không làm nổi hạt) vì mực in nhiệt
+# loang nhẹ trên giấy. Mức 0 = không làm nét.
+function Get-Rx1SharpenAmount([int]$level) {
+  return @(0.0, 0.35, 0.6, 0.9, 1.25)[[Math]::Max(0, [Math]::Min(4, $level))]
+}
+function Initialize-Rx1Sharpen {
+  if ('NxcRx1Sharpen' -as [type]) { return $true }
+  if ($script:Rx1SharpenError) { return $false }
+  try {
+    Add-Type -ReferencedAssemblies System.Drawing -TypeDefinition @'
+using System;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
+public static class NxcRx1Sharpen {
+  // amounts: một mức cho cả tờ, hoặc nhiều mức cho các dải dọc bằng nhau (tờ in thử độ nét).
+  // sigmaX / sigmaY: bán kính làm mờ tính bằng điểm của máy in từng chiều (điểm có thể không vuông).
+  public static void Apply(Bitmap image, double[] amounts, double sigmaX, double sigmaY, int threshold) {
+    int w = image.Width, h = image.Height, bands = amounts.Length;
+    BitmapData data = image.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+    try {
+      int stride = data.Stride;
+      byte[] px = new byte[stride * h];
+      Marshal.Copy(data.Scan0, px, 0, px.Length);
+      float[] luma = new float[w * h];
+      for (int r = 0; r < h; r++) {
+        int o = r * stride;
+        for (int c = 0; c < w; c++, o += 4) luma[r * w + c] = 0.114f * px[o] + 0.587f * px[o + 1] + 0.299f * px[o + 2];
+      }
+      float[] blurred = Blur(luma, w, h, sigmaX, sigmaY);
+      for (int r = 0; r < h; r++) {
+        int o = r * stride;
+        for (int c = 0; c < w; c++, o += 4) {
+          double amount = amounts[bands == 1 ? 0 : Math.Min(bands - 1, (int)((long)c * bands / w))];
+          if (amount <= 0) continue;
+          float diff = luma[r * w + c] - blurred[r * w + c];
+          if (Math.Abs(diff) <= threshold) continue;
+          float delta = (float)(amount * diff);
+          px[o] = Clamp(px[o] + delta);
+          px[o + 1] = Clamp(px[o + 1] + delta);
+          px[o + 2] = Clamp(px[o + 2] + delta);
+        }
+      }
+      Marshal.Copy(px, 0, data.Scan0, px.Length);
+    } finally { image.UnlockBits(data); }
+  }
+  static byte Clamp(float value) { return value <= 0 ? (byte)0 : value >= 255 ? (byte)255 : (byte)(value + 0.5f); }
+  static float[] Kernel(double sigma) {
+    if (sigma < 0.05) return new float[] { 1f };
+    int radius = Math.Max(1, (int)Math.Ceiling(sigma * 3));
+    float[] k = new float[radius * 2 + 1];
+    double sum = 0;
+    for (int i = -radius; i <= radius; i++) { double v = Math.Exp(-(i * i) / (2 * sigma * sigma)); k[i + radius] = (float)v; sum += v; }
+    for (int i = 0; i < k.Length; i++) k[i] = (float)(k[i] / sum);
+    return k;
+  }
+  static float[] Blur(float[] source, int w, int h, double sigmaX, double sigmaY) {
+    float[] kx = Kernel(sigmaX), ky = Kernel(sigmaY);
+    int rx = kx.Length / 2, ry = ky.Length / 2;
+    float[] across = new float[w * h], result = new float[w * h];
+    for (int r = 0; r < h; r++)
+      for (int c = 0; c < w; c++) {
+        float s = 0;
+        for (int i = -rx; i <= rx; i++) { int x = Math.Min(w - 1, Math.Max(0, c + i)); s += kx[i + rx] * source[r * w + x]; }
+        across[r * w + c] = s;
+      }
+    for (int r = 0; r < h; r++)
+      for (int c = 0; c < w; c++) {
+        float s = 0;
+        for (int i = -ry; i <= ry; i++) { int y = Math.Min(h - 1, Math.Max(0, r + i)); s += ky[i + ry] * across[y * w + c]; }
+        result[r * w + c] = s;
+      }
+    return result;
+  }
+}
+'@
+    return $true
+  } catch {
+    $script:Rx1SharpenError = $_.Exception.Message
+    return $false
+  }
+}
+# Nhãn của tờ in thử: vạch trắng giữa 5 dải, số mức 0–4 ở đầu mỗi dải (mức đang dùng: ô đậm), một
+# dòng hướng dẫn ở cuối tờ. Chữ đặt lùi vào trong, tránh phần tràn lề bị máy xén.
+function Add-Rx1TestLabels([Drawing.Bitmap]$bitmap, [int]$current) {
+  $g = [Drawing.Graphics]::FromImage($bitmap)
+  $white = New-Object Drawing.SolidBrush([Drawing.Color]::White)
+  $ink = New-Object Drawing.SolidBrush([Drawing.Color]::FromArgb(255, 45, 30, 24))
+  $font = New-Object Drawing.Font('Arial', 22, [Drawing.FontStyle]::Bold, [Drawing.GraphicsUnit]::Point)
+  $small = New-Object Drawing.Font('Arial', 8, [Drawing.FontStyle]::Bold, [Drawing.GraphicsUnit]::Point)
+  $center = New-Object Drawing.StringFormat
+  try {
+    $center.Alignment = [Drawing.StringAlignment]::Center
+    $center.LineAlignment = [Drawing.StringAlignment]::Center
+    $g.TextRenderingHint = [Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+    $dpiX = [double]$bitmap.HorizontalResolution; $dpiY = [double]$bitmap.VerticalResolution
+    $band = $bitmap.Width / 5
+    $line = [Math]::Max(1.0, $dpiX / 150)
+    for ($i = 1; $i -lt 5; $i++) { $g.FillRectangle($white, [single]($i * $band - $line / 2), [single]0, [single]$line, [single]$bitmap.Height) }
+    for ($i = 0; $i -lt 5; $i++) {
+      $box = New-Object Drawing.RectangleF([single]($i * $band + $band * 0.2), [single](0.22 * $dpiY), [single]($band * 0.6), [single](0.42 * $dpiY))
+      $fill = if ($i -eq $current) { $ink } else { $white }
+      $text = if ($i -eq $current) { $white } else { $ink }
+      $g.FillRectangle($fill, $box)
+      $g.DrawString([string]$i, $font, $text, $box, $center)
+    }
+    $caption = New-Object Drawing.RectangleF([single]0, [single]($bitmap.Height - 0.5 * $dpiY), [single]$bitmap.Width, [single](0.26 * $dpiY))
+    $g.FillRectangle($white, $caption)
+    $g.DrawString('In thử độ nét 0 → 4 · ô đậm: mức đang dùng', $small, $ink, $caption, $center)
+  } finally { $center.Dispose(); $small.Dispose(); $font.Dispose(); $ink.Dispose(); $white.Dispose(); $g.Dispose() }
+}
+# Một trang in đúng lưới điểm của máy in: tờ in phủ kín trang (giữ tỉ lệ, căn giữa; phần tràn lề máy xén
+# như cũ), bù gamma, rồi làm nét. $pageWidth / $pageHeight: PageBounds (1/100 inch); $dpiX / $dpiY: độ phân
+# giải máy in. $testCurrent ≥ 0: tờ in thử — 5 dải độ nét 0–4, dải mức đang dùng có nhãn đậm.
+function New-Rx1PageBitmap([Drawing.Image]$photo, [double]$pageWidth, [double]$pageHeight, [double]$dpiX, [double]$dpiY,
+    [double]$gamma, [int]$sharpen, [int]$testCurrent = -1) {
+  $width = [Math]::Max(1, [int][Math]::Round($pageWidth * $dpiX / 100))
+  $height = [Math]::Max(1, [int][Math]::Round($pageHeight * $dpiY / 100))
+  $bitmap = New-Object Drawing.Bitmap($width, $height, [Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $done = $false
+  try {
+    $bitmap.SetResolution([single]$dpiX, [single]$dpiY)
+    $g = [Drawing.Graphics]::FromImage($bitmap)
+    try {
+      $g.Clear([Drawing.Color]::White)
+      $g.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+      $g.PixelOffsetMode = [Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+      $g.CompositingQuality = [Drawing.Drawing2D.CompositingQuality]::HighQuality
+      # Phủ kín trang theo inch (điểm của máy in có thể không vuông), giữ tỉ lệ tờ in, căn giữa.
+      $inch = [Math]::Max(($pageWidth / 100) / $photo.Width, ($pageHeight / 100) / $photo.Height)
+      $w = $photo.Width * $inch * $dpiX; $h = $photo.Height * $inch * $dpiY
+      $dest = New-Object Drawing.Rectangle([int][Math]::Round(($width - $w) / 2)), ([int][Math]::Round(($height - $h) / 2)), ([int][Math]::Ceiling($w)), ([int][Math]::Ceiling($h))
+      $attrs = New-Rx1ImageAttributes $gamma
+      try { $g.DrawImage($photo, $dest, 0, 0, $photo.Width, $photo.Height, [Drawing.GraphicsUnit]::Pixel, $attrs) }
+      finally { $attrs.Dispose() }
+    } finally { $g.Dispose() }
+    $amounts = if ($testCurrent -ge 0) { @(0..4 | ForEach-Object { Get-Rx1SharpenAmount $_ }) } else { @(Get-Rx1SharpenAmount $sharpen) }
+    if (@($amounts | Where-Object { $_ -gt 0 }).Count) {
+      if (Initialize-Rx1Sharpen) { [NxcRx1Sharpen]::Apply($bitmap, [double[]]$amounts, 0.7 * $dpiX / 300, 0.7 * $dpiY / 300, 2) }
+      elseif ($testCurrent -ge 0) { throw "Máy này không làm nét được ảnh: $($script:Rx1SharpenError)" }
+    }
+    if ($testCurrent -ge 0) { Add-Rx1TestLabels $bitmap $testCurrent }
+    $done = $true
+    return $bitmap
+  } finally { if (-not $done) { $bitmap.Dispose() } }
+}
+# Vẽ một tờ in lên trang của máy in: đúng lưới điểm, 1:1 (điểm ảnh = điểm máy in, driver không co giãn).
+# Trả về kích thước lưới "rộng x cao" để ghi nhật ký.
+function Write-Rx1Page($event, [Drawing.Image]$photo, [double]$gamma, [int]$sharpen, [int]$testCurrent = -1) {
+  # Tờ khác chiều với trang của máy in (vd. tờ ngang trên trang dọc): xoay 90 độ cho kín khổ.
+  $pageLandscape = $event.PageBounds.Width -gt $event.PageBounds.Height
+  if (($photo.Width -gt $photo.Height) -ne $pageLandscape) { $photo.RotateFlip([Drawing.RotateFlipType]::Rotate90FlipNone) }
+  $g = $event.Graphics
+  $dpiX = [double]$g.DpiX; $dpiY = [double]$g.DpiY
+  $page = New-Rx1PageBitmap $photo $event.PageBounds.Width $event.PageBounds.Height $dpiX $dpiY $gamma $sharpen $testCurrent
+  try {
+    $g.ResetTransform()
+    $g.PageUnit = [Drawing.GraphicsUnit]::Pixel
+    $g.TranslateTransform([single](-$event.PageSettings.HardMarginX * $dpiX / 100), [single](-$event.PageSettings.HardMarginY * $dpiY / 100))
+    $g.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+    $g.PixelOffsetMode = [Drawing.Drawing2D.PixelOffsetMode]::Half
+    $g.DrawImage($page, (New-Object Drawing.Rectangle(0, 0, $page.Width, $page.Height)), 0, 0, $page.Width, $page.Height, [Drawing.GraphicsUnit]::Pixel)
+    return ('{0}x{1}' -f $page.Width, $page.Height)
+  } finally { $page.Dispose() }
 }
 function Set-Rx1MaximumResolution($settings, $page) {
   # Use only positive DPI pairs advertised by this driver; never invent a 600 DPI mode.
@@ -127,29 +308,16 @@ $outputSettings = if ($OutputSettingsPath) { Get-Rx1OutputSettings $OutputSettin
 if ($outputSettings.warning) { Write-Output $outputSettings.warning }
 if ($outputSettings.maxResolution) { Set-Rx1MaximumResolution $document.PrinterSettings $document.DefaultPageSettings }
 $script:printGamma = $outputSettings.gamma
+$script:printSharpen = $outputSettings.sharpen
 $script:pageIndex = 0
 $document.add_PrintPage({
   param($sender, $event)
   $photo = [System.Drawing.Image]::FromFile($pages[$script:pageIndex], $true)
-  try {
-    # Tờ khác chiều với trang của máy in (vd. tờ ngang 15 x 10 trên trang dọc) thì xoay 90 độ cho kín khổ.
-    $pageLandscape = $event.PageBounds.Width -gt $event.PageBounds.Height
-    if (($photo.Width -gt $photo.Height) -ne $pageLandscape) { $photo.RotateFlip([System.Drawing.RotateFlipType]::Rotate90FlipNone) }
-    $g = $event.Graphics
-    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-    $g.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
-    $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
-    $g.TranslateTransform(-$event.PageSettings.HardMarginX, -$event.PageSettings.HardMarginY)
-    # Phủ kín trang mà giữ tỉ lệ (không kéo giãn méo), mép tràn lề máy xén như thường.
-    $b = $event.PageBounds
-    $scale = [Math]::Max($b.Width / $photo.Width, $b.Height / $photo.Height)
-    $w = $photo.Width * $scale; $h = $photo.Height * $scale
-    $dest = New-Object System.Drawing.Rectangle([int][Math]::Round($b.X + ($b.Width - $w) / 2)), ([int][Math]::Round($b.Y + ($b.Height - $h) / 2)), ([int][Math]::Ceiling($w)), ([int][Math]::Ceiling($h))
-    $attrs = New-Rx1ImageAttributes $script:printGamma
-    try { $g.DrawImage($photo, $dest, 0, 0, $photo.Width, $photo.Height, [System.Drawing.GraphicsUnit]::Pixel, $attrs) }
-    finally { $attrs.Dispose() }
-  } finally { $photo.Dispose() }
+  # Đúng lưới điểm của máy in, vẽ 1:1, bù gamma và làm nét (xem New-Rx1PageBitmap).
+  try { [void](Write-Rx1Page $event $photo $script:printGamma $script:printSharpen) }
+  finally { $photo.Dispose() }
   $script:pageIndex++
   $event.HasMorePages = $script:pageIndex -lt $pages.Count
 })
 try { $document.Print() } finally { $document.Dispose() }
+if ($script:Rx1SharpenError) { Write-Output "Printed without sharpening (cannot compile the sharpening filter): $($script:Rx1SharpenError)" }

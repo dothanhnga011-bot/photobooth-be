@@ -58,6 +58,8 @@ const bool = (description) => ({ type: "boolean", description });
 const rx1Output = object({
   gamma: { type: "number", minimum: 1, maximum: 2.2, multipleOf: 0.01, description: "Hệ số bù tối bản in (1.00–2.20); mặc định 1.50" },
   maxResolution: bool("Dùng DPI cao nhất driver hỗ trợ"),
+  sharpen: { type: "integer", minimum: 0, maximum: 4, description: "Độ nét bản in: 0 = không làm nét … 4 = mạnh; mặc định 2. " +
+    "Bộ in co tờ in đúng lưới điểm của máy in rồi làm nét nhẹ trên độ sáng. Thiếu = mặc định (bộ in cũ không gửi)." },
 }, ["gamma", "maxResolution"]);
 const enumOf = (values, description) => ({
   type: "string",
@@ -1040,9 +1042,13 @@ export const openapi = {
       post: {
         tags: ["Máy in tại tiệm"],
         summary: "Bộ in RX1 báo mức đang dùng và nhận cấu hình màu từ web",
-        description: "Cần Bearer mã máy in riêng của phòng. Chỉ đồng bộ cấu hình, không nhận hoặc phát lệnh in. rx1Output: null khi quản trị chưa lưu cấu hình chung.",
-        requestBody: body({ applied: rx1Output }, ["applied"]),
-        responses: { ...ok("{ rx1Output: { gamma, maxResolution } | null }"), ...errors(400, 403) },
+        description: "Cần Bearer mã máy in riêng của phòng. Chỉ đồng bộ cấu hình, không nhận hoặc phát lệnh in khách. rx1Output: null khi quản trị chưa lưu cấu hình chung. " +
+          "sharpnessTest (trả về): yêu cầu in thử độ nét đang chờ của phòng { id } hoặc null; bộ in in một tờ thử rồi gửi lại sharpnessTest { id, sent, message } ở lần đồng bộ sau.",
+        requestBody: body({
+          applied: rx1Output,
+          sharpnessTest: object({ id: str("Mã yêu cầu in thử"), sent: bool("Đã gửi tới máy in"), message: str("Kết quả") }, ["id", "sent"]),
+        }, ["applied"]),
+        responses: { ...ok("{ rx1Output: { gamma, maxResolution, sharpen } | null, sharpnessTest: { id } | null }"), ...errors(400, 403) },
       },
     },
     "/api/print-agent/claim": {
@@ -1696,12 +1702,21 @@ export const openapi = {
     "/api/admin/settings/rx1-output": {
       get: {
         tags: ["Thiết lập"], summary: "Đọc cấu hình màu in RX1", description: adminOnly,
-        responses: { ...ok("{ configured, settings: { gamma, maxResolution } }"), ...errors(401, 403) },
+        responses: { ...ok("{ configured, settings: { gamma, maxResolution, sharpen } }"), ...errors(401, 403) },
       },
       put: {
         tags: ["Thiết lập"], summary: "Lưu cấu hình màu in RX1 cho mọi máy DNP", description: adminOnly,
         requestBody: { required: true, ...json(rx1Output) },
         responses: { ...ok("Cấu hình đã lưu; bộ in cập nhật nhận ở lần đồng bộ kế tiếp"), ...errors(400, 401, 403) },
+      },
+    },
+    "/api/admin/settings/rx1-output/sharpness-test/{room}": {
+      post: {
+        tags: ["Thiết lập"], summary: "In thử độ nét ở máy DNP của một phòng", description: adminOnly +
+          " Bộ in của phòng nhận yêu cầu ở lần đồng bộ kế tiếp (vài giây) và in một tờ chia 5 dải độ nét 0–4 từ tờ in gần nhất " +
+          "(chưa có thì ảnh mẫu). Yêu cầu quá 15 phút chưa được nhận thì bỏ. Kết quả xem ở GET /api/admin/print-jobs/printers (sharpnessTest).",
+        parameters: [{ name: "room", in: "path", required: true, schema: { type: "string" } }],
+        responses: { ...ok("{ id, status: queued, at, message }"), ...errors(401, 403, 404, 409) },
       },
     },
     "/api/admin/settings/kiosk": {

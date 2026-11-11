@@ -12,7 +12,8 @@ import { publicJob } from "./print-helpers.js";
 import { fail, id } from "./validation.js";
 import { printBody } from "./print-upload.js";
 import { submitPrintPack } from "./albums.js";
-import { getRx1Output, noteRx1Output, rx1OutputSchema } from "../services/rx1-output.js";
+import { getRx1Output, noteRx1Output, noteSharpnessTest, pendingSharpnessTest, rx1AppliedSchema,
+  sharpnessTestReportSchema } from "../services/rx1-output.js";
 
 export const printAgentRouter = Router();
 const LEASE_MS = 5 * 60 * 1000;
@@ -43,11 +44,16 @@ const scopeFilter = (req, branch) => (req.printScope ? { room: req.printScope.ro
 
 const PRINT_SIZES = ["full", "strip", "instax"];
 // Configuration/acknowledgement only. This never claims, prints, archives, or charges a sheet.
+// Kèm yêu cầu "In thử độ nét" của phòng (nếu đang chờ) và nhận lại kết quả tờ thử agent đã in.
 printAgentRouter.post("/output-settings/sync", async (req, res) => {
   if (!req.printScope) fail(403, "Đồng bộ màu RX1 cần mã máy in riêng của phòng.");
-  const { applied } = z.object({ applied: rx1OutputSchema }).strict().parse(req.body);
+  const { applied, sharpnessTest } = z.object({
+    applied: rx1AppliedSchema,
+    sharpnessTest: sharpnessTestReportSchema.optional(),
+  }).strict().parse(req.body);
   await noteRx1Output(req.printScope, applied);
-  res.json({ rx1Output: await getRx1Output() });
+  if (sharpnessTest) await noteSharpnessTest(req.printScope.room, sharpnessTest);
+  res.json({ rx1Output: await getRx1Output(), sharpnessTest: await pendingSharpnessTest(req.printScope.room) });
 });
 // Authenticated room agent reserves/stores a local print without ever putting it in the claim queue.
 // Only the first response includes a lease. A retry cannot print an uncertain physical result twice.

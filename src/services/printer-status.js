@@ -100,6 +100,7 @@ export async function listPrinterStatus(branch) {
         ...describe(row.value),
         dnp: row.value.dnp || null,
         rx1Output: row.value.rx1Output || null,
+        sharpnessTest: row.value.sharpnessTest || null,
       })),
   ];
 }

@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
-import { Setting } from "../../models/index.js";
+import { Room, Setting } from "../../models/index.js";
 import { admin } from "../../middleware/auth.js";
-import { text, priceVND } from "../validation.js";
-import { DEFAULT_RX1_OUTPUT, getRx1Output, rx1OutputSchema } from "../../services/rx1-output.js";
+import { fail, id, text, priceVND } from "../validation.js";
+import { DEFAULT_RX1_OUTPUT, getRx1Output, requestSharpnessTest, rx1OutputSchema } from "../../services/rx1-output.js";
 
 export const settingsRouter = Router();
 
@@ -19,6 +19,13 @@ settingsRouter.put("/rx1-output", admin, async (req, res) => {
   const settings = rx1OutputSchema.parse(req.body);
   await Setting.findOneAndUpdate({ key: "studio" }, { $set: { "value.rx1Output": settings } }, { upsert: true });
   res.json({ configured: true, settings });
+});
+// In thử độ nét ở máy DNP của một phòng photobooth: một tờ chia 5 dải độ nét 0–4 (xem rx1-output.js).
+settingsRouter.post("/rx1-output/sharpness-test/:room", admin, async (req, res) => {
+  const room = await Room.findById(id.parse(req.params.room)).select("branch kind active").lean();
+  if (!room || room.active === false) fail(404, "Không tìm thấy phòng.");
+  if (room.kind === "polaroid") fail(409, "Phòng Polaroid in bằng máy Instax, không có máy DNP để in thử độ nét.");
+  res.status(201).json(await requestSharpnessTest({ room: room._id, branch: room.branch || "" }));
 });
 
 // Only the extra-sheet prices (admins only): a 10 × 15 sheet and an Instax Wide print. The rest of
