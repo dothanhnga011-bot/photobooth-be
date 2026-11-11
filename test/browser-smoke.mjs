@@ -431,7 +431,7 @@ try {
   assert.equal(await print.isDisabled(), true, "Chọn đủ ảnh của gói mới được in");
   await picks.nth(0).click();
   await picks.nth(1).click();
-  // Chọn đủ ảnh: máy tự mở mục kế tiếp (Chỉnh ảnh); màu ảnh ở mục Màu ảnh.
+  // Chọn đủ ảnh: máy tự mở mục kế tiếp (Khung khi có nhiều khung, không thì Chỉnh ảnh); màu ảnh ở mục Màu ảnh.
   await kiosk.getByRole("tab", { name: /Chỉnh ảnh/ }).waitFor();
   await kiosk.getByRole("tab", { name: /Màu ảnh/ }).click();
   await kiosk.getByRole("radio", { name: "Trắng đen" }).click();
