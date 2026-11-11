@@ -10,6 +10,7 @@ import { MongoMemoryServer } from "mongodb-memory-server";
 import { app } from "../src/app.js";
 import { config } from "../src/config.js";
 import { Booking, Room, Setting, User } from "../src/models/index.js";
+import { catalogCache } from "../src/services/read-cache.js";
 
 let memory;
 // Database commands (find, update, aggregate…) sent while `action` runs.
@@ -47,6 +48,14 @@ test("the catalog is read from the database once, and any admin edit shows on th
   assert.equal((await request(app).get("/api/catalog").expect(200)).body.settings.name, "Đổi tên");
   await Room.updateOne({ name: "Phòng mới" }, { active: false });
   assert.ok(!(await request(app).get("/api/catalog")).body.rooms.some((r) => r.name === "Phòng mới"));
+});
+
+test("six kiosks opening a cold catalog share one set of six database reads", async () => {
+  catalogCache.clear();
+  const sent = await commands(() => Promise.all(Array.from({ length: 6 }, () =>
+    request(app).get("/api/catalog").expect(200))));
+  assert.equal(sent.length, 6, sent.join(", "));
+  assert.equal(new Set(sent).size, 6, "one query per collection, rather than six per kiosk");
 });
 
 test("admin session checks are cached, but deactivation and password changes apply on the next request", async () => {

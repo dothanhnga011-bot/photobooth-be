@@ -4,23 +4,31 @@
 // this process (the only process); a short lifetime covers anything edited elsewhere.
 export function createReadCache({ ttl = 60_000, max = 200 } = {}) {
   const entries = new Map();
+  const loading = new Map();
   let generation = 0;
   return {
     async get(key, load) {
       const hit = entries.get(key);
       if (hit && hit.expires > Date.now()) return hit.value;
+      if (loading.has(key)) return loading.get(key);
       const started = generation;
-      const value = await load();
-      // A write that happened while loading may not be in this result: do not keep it.
-      if (started === generation) {
-        if (entries.size >= max) entries.delete(entries.keys().next().value);
-        entries.set(key, { value, expires: Date.now() + ttl });
-      }
-      return value;
+      const task = Promise.resolve().then(load).then((value) => {
+        // A write that happened while loading may not be in this result: do not keep it.
+        if (started === generation) {
+          if (entries.size >= max) entries.delete(entries.keys().next().value);
+          entries.set(key, { value, expires: Date.now() + ttl });
+        }
+        return value;
+      }).finally(() => {
+        if (loading.get(key) === task) loading.delete(key);
+      });
+      loading.set(key, task);
+      return task;
     },
     clear() {
       generation++;
       entries.clear();
+      loading.clear();
     },
   };
 }
