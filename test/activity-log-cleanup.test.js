@@ -1,12 +1,8 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import mongoose from "mongoose";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { removeActivityLogs } from "../src/services/activity-log-cleanup.js";
-import { migrateCollectionNames } from "../src/migrations/collection-names.js";
 
 let memory;
 let connection;
@@ -83,40 +79,4 @@ test("cleanup deletes current and legacy logs while preserving all other data an
       .sort(),
     remaining,
   );
-});
-
-test("legacy collection migration cannot rename retired activity logs", async () => {
-  await db.collection("hf_audits").insertOne({ _id: "legacy-log" });
-  assert.deepEqual(await migrateCollectionNames(db), []);
-  assert.equal(await db.collection("hf_audits").countDocuments(), 1);
-  assert.equal(
-    (await db.listCollections({ name: "audits" }).toArray()).length,
-    0,
-  );
-  assert.equal((await removeActivityLogs(db)).deletedDocuments, 1);
-});
-
-test("standalone cleanup reports verified deletion without touching preserved data", async () => {
-  await db.collection("audits").insertOne({ _id: "command-log" });
-  const { stdout, stderr } = await promisify(execFile)(
-    process.execPath,
-    [
-      fileURLToPath(
-        new URL("../scripts/remove-activity-logs.js", import.meta.url),
-      ),
-    ],
-    {
-      env: { ...process.env, MONGO_URI: memory.getUri() },
-      timeout: 35000,
-    },
-  );
-  assert.equal(stderr, "");
-  assert.deepEqual(JSON.parse(stdout), {
-    removed: [{ collection: "audits", documents: 1 }],
-    deletedDocuments: 1,
-    remainingLogCollections: [],
-  });
-  assert.equal(await db.collection("bookings").countDocuments(), 1);
-  assert.equal(await db.collection("media.files").countDocuments(), 1);
-  assert.equal(await db.collection("media.chunks").countDocuments(), 1);
 });

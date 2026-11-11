@@ -10,9 +10,7 @@
     "print:agent": "node scripts/print-agent.js",
     "r2:check": "node scripts/check-r2.js",
     "test": "node --import ./test/environment.js --test test/*.test.js",
-    "test:browser": "node test/browser-smoke.mjs",
-    "migrate:collections": "node scripts/migrate-collections.js",
-    "cleanup:activity-logs": "node scripts/remove-activity-logs.js"
+    "test:browser": "node test/browser-smoke.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1147.0",

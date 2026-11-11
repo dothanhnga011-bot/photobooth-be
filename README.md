@@ -323,15 +323,10 @@ Mỗi model nằm trong file riêng ở `src/models/`: `User.js`, `Room.js`, `Pa
 `Setting.js`, `Booking.js`, `PrintJob.js`; `index.js` tổng hợp export.
 
 Tên collection: `users`, `rooms`, `packages`, `frames`, `settings`, `bookings`, `print_jobs`.
-Các collection `shifts`, `pay_adjustments`, `payrolls` của tính năng chấm công & lương cũ (đã bỏ) không còn
-được dùng — dữ liệu cũ vẫn nằm trong MongoDB, xóa tay nếu không cần.
-
-Đổi tên collection từ phiên bản cũ: dừng backend, chạy `npm run migrate:collections`, rồi khởi động lại.
-Migration giữ nguyên dữ liệu và index, không ghi đè collection đích đã tồn tại.
+Các collection `pay_adjustments`, `payrolls` của tính năng chấm công & lương cũ (đã bỏ) không còn được dùng —
+dữ liệu cũ vẫn nằm trong MongoDB, xóa tay nếu không cần.
 
 Nhật ký hoạt động đã được bỏ khỏi ứng dụng và không còn ghi dữ liệu mới.
 Khi khởi động backend, ứng dụng xoá hai collection nhật ký cũ `audits` và `hf_audits`,
-bao gồm cả dữ liệu và index. Có thể chạy riêng `npm run cleanup:activity-logs`
-để xoá nhật ký trong MongoDB đang cấu hình mà không khởi động ứng dụng.
-Lệnh này chỉ xoá hai collection trên; ảnh, vé, doanh thu và các collection khác được giữ nguyên.
+bao gồm cả dữ liệu và index; ảnh, vé, doanh thu và các collection khác được giữ nguyên.
 Sau khi đưa code mới lên máy chủ, các backend cũ cần được dừng để không tiếp tục ghi nhật ký.
