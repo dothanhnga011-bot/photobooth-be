@@ -10,6 +10,15 @@ import { publicBooking } from "../booking-helpers.js";
 export const ticketsRouter = Router();
 const CODE_LIFETIME_MS = 2 * 60 * 60 * 1000;
 
+async function requireCounterRoom(branch, room) {
+  if (room?.kind === "polaroid")
+    fail(400, "Phòng Polaroid chọn layout tại máy và thanh toán ở quầy, không dùng mã chụp.");
+  // Older rooms without a kind are photobooths. Never issue a code at a branch
+  // where no active booth can redeem it (e.g. a Polaroid-only branch).
+  if (!await Room.exists({ branch, active: true, kind: { $ne: "polaroid" } }))
+    fail(400, `Chi nhánh “${branch}” chưa có phòng photobooth đang hoạt động để nhập mã. Vui lòng chọn đúng chi nhánh hoặc kiểm tra loại phòng trong Quản lý máy.`);
+}
+
 // Phiếu tại quầy không cần thông tin khách. Vẫn kiểm tra khi client cũ gửi kèm.
 const customerName = z.string().trim().max(100).default("");
 const customerPhone = z.string().trim()
@@ -56,6 +65,7 @@ ticketsRouter.post("/draft", auth, bookingLimit, async (req, res) => {
   if (!branch) fail(400, "Vui lòng chọn chi nhánh trước khi tạo phiếu.");
   requireBranch(req, branch);
   if (room && d.branch && d.branch !== room.branch) fail(400, "Phòng không thuộc chi nhánh đã chọn.");
+  await requireCounterRoom(branch, room);
   // Bảng giá riêng: gói chỉ bán ở các chi nhánh đã chọn (để trống = mọi chi nhánh).
   if (pack.branches?.length && !pack.branches.includes(branch))
     fail(400, `Gói “${pack.name}” không áp dụng tại chi nhánh ${branch}.`);
@@ -116,6 +126,7 @@ ticketsRouter.patch("/:id/activate", auth, async (req, res) => {
     return res.json({ ...publicBooking(draft), accessToken: draft.accessToken });
   if (draft.status !== "pending" || draft.paid)
     fail(409, "Mã này không thể kích hoạt.");
+  await requireCounterRoom(draft.branch);
   const currentPackage = await Package.findById(draft.package).select("price active").lean();
   if (!currentPackage?.active || currentPackage.price !== draft.total)
     fail(409, "Gói chụp hoặc giá đã thay đổi trước khi thu tiền. Vui lòng tạo phiếu mới.");
@@ -207,6 +218,7 @@ ticketsRouter.post("/", auth, bookingLimit, async (req, res) => {
   if (!branch) fail(400, "Vui lòng chọn chi nhánh trước khi tạo mã.");
   requireBranch(req, branch);
   if (room && d.branch && d.branch !== room.branch) fail(400, "Phòng không thuộc chi nhánh đã chọn.");
+  await requireCounterRoom(branch, room);
   // Bảng giá riêng: gói chỉ bán ở các chi nhánh đã chọn (để trống = mọi chi nhánh).
   if (pack.branches?.length && !pack.branches.includes(branch))
     fail(400, `Gói “${pack.name}” không áp dụng tại chi nhánh ${branch}.`);

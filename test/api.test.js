@@ -294,6 +294,80 @@ test("unpaid drafts have no usable code; activation is idempotent and starts the
   }
 });
 
+test("counter codes require an active photobooth in the selected branch, including legacy issuance", async () => {
+  const onlyPolaroid = await Room.create({ name: "Polaroid only", branch: "Polaroid branch", active: true, kind: "polaroid" });
+  const inactive = await Room.create({ name: "Inactive booth", branch: "Inactive branch", active: false });
+  try {
+    for (const target of [
+      { branch: onlyPolaroid.branch }, { room: String(onlyPolaroid._id) },
+      { branch: inactive.branch }, { branch: "No rooms branch" },
+    ]) {
+      for (const path of ["/api/admin/tickets/draft", "/api/admin/tickets"]) {
+        const requestKey = randomUUID();
+        const rejected = await admin.post(path).send({ package: String(pack._id), ...target, requestKey,
+          expectedTotal: pack.price, paymentReceived: true, paymentMethod: "cash" }).expect(400);
+        assert.match(rejected.body.message, /photobooth|Polaroid/);
+        assert.equal(await Booking.countDocuments({ requestKey }), 0, "rejection cannot create a paid sale or draft");
+      }
+    }
+  } finally {
+    await Room.deleteMany({ _id: { $in: [onlyPolaroid._id, inactive._id] } });
+  }
+});
+
+test("a draft cannot charge or release a code after its branch loses the last active photobooth", async () => {
+  const booth = await Room.create({ name: "Changing booth", branch: "Changing branch", active: true });
+  let draft;
+  try {
+    draft = (await admin.post("/api/admin/tickets/draft").send({ branch: booth.branch, package: String(pack._id),
+      requestKey: randomUUID(), expectedTotal: pack.price }).expect(201)).body;
+    await Room.updateOne({ _id: booth._id }, { kind: "polaroid" });
+    const rejected = await admin.patch(`/api/admin/tickets/${draft._id}/activate`)
+      .send({ paymentReceived: true, paymentMethod: "cash", expectedTotal: pack.price }).expect(400);
+    assert.match(rejected.body.message, /chưa có phòng photobooth/);
+    const unchanged = await Booking.findById(draft._id);
+    assert.equal(unchanged.paid, false);
+    assert.equal(unchanged.status, "pending");
+    assert.equal(unchanged.code, undefined);
+    assert.equal(unchanged.paidAt, undefined);
+  } finally {
+    if (draft) await Booking.deleteOne({ _id: draft._id });
+    await Room.deleteOne({ _id: booth._id });
+  }
+});
+
+test("a paid code explains a wrong branch without changing the sale and still redeems once at its own booth", async () => {
+  const booth = await Room.create({ name: "Other booth", branch: "Other code branch", active: true });
+  const wrongDevice = jwt.sign({ type: "kiosk", room: String(room._id), jti: randomUUID() }, config.secret);
+  let ticket;
+  try {
+    // The branch-only request is the real counter UI flow: room is chosen at redemption.
+    ticket = (await admin.post("/api/admin/tickets").send({ branch: booth.branch, package: String(pack._id),
+      requestKey: randomUUID(), paymentReceived: true, paymentMethod: "cash", expectedTotal: pack.price }).expect(201)).body;
+    const rejected = await request(app).post("/api/kiosk/claim").send({ code: ticket.code, device: wrongDevice }).expect(400);
+    assert.match(rejected.body.message, /Mã chụp thuộc chi nhánh/);
+    assert.ok(rejected.body.message.includes(booth.branch));
+    assert.ok(rejected.body.message.includes(room.branch));
+    const unchanged = await Booking.findById(ticket._id);
+    assert.equal(unchanged.status, "confirmed");
+    assert.equal(unchanged.paid, true);
+    assert.equal(unchanged.total, pack.price);
+    assert.equal(unchanged.branch, booth.branch);
+    assert.equal(unchanged.captureSession, undefined);
+    const rightDevice = jwt.sign({ type: "kiosk", room: String(booth._id) }, config.secret);
+    const claimed = await request(app).post("/api/kiosk/claim").send({ code: ticket.code, device: rightDevice }).expect(200);
+    assert.equal(claimed.body.booking.room, String(booth._id));
+    assert.equal(claimed.body.booking.paid, true);
+    assert.equal(claimed.body.booking.total, pack.price);
+    await request(app).post("/api/kiosk/claim").send({ code: ticket.code, device: rightDevice }).expect(409);
+  } finally {
+    if (ticket) await Booking.deleteOne({ _id: ticket._id });
+    const { createHash } = await import("node:crypto");
+    await KioskAttempt.deleteOne({ deviceKey: createHash("sha256").update(wrongDevice).digest("hex") });
+    await Room.deleteOne({ _id: booth._id });
+  }
+});
+
 test("five simultaneous invalid kiosk codes cause one five-minute device lock", async () => {
   const device = jwt.sign({ type: "kiosk", room: String(room._id), jti: randomUUID() }, config.secret);
   const deviceKey = (await import("node:crypto")).createHash("sha256").update(device).digest("hex");
