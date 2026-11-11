@@ -26,6 +26,7 @@ import { mediaReference } from "../services/r2.js";
 import { fail, today, token } from "./validation.js";
 import { publicBooking } from "./booking-helpers.js";
 import { polaroidDuration } from "../polaroid-layouts.js";
+import { rejectArchivedSale } from "../services/revenue-ledger.js";
 import {
   captureBooking,
   touchKiosk,
@@ -131,6 +132,7 @@ kioskRouter.post("/sale", sensitive(), async (req, res) => {
     if (!existing.captureSession) fail(409, "Lượt chụp này đã kết thúc.");
     return res.json(saleSession(existing, room, existing.captureSession));
   }
+  await rejectArchivedSale(d.requestKey);
   if (room.kind === "polaroid")
     fail(403, "Phòng Polaroid không thu tiền tại máy — khách chọn layout rồi trả tiền ở quầy.");
   if (d.skip && !room.paymentTest)
@@ -222,6 +224,7 @@ kioskRouter.post("/polaroid", sensitive(), async (req, res) => {
     if (!existing.captureSession) fail(409, "Lượt chụp này đã kết thúc.");
     return res.json(saleSession(existing, room, existing.captureSession));
   }
+  await rejectArchivedSale(d.requestKey);
   if (room.kind !== "polaroid")
     fail(403, "Đây là phòng photobooth — khách chọn Nhập mã hoặc Tiền mặt. Đổi loại phòng ở Quản trị → Quản lý máy.");
   const pack = await Package.findOne({ _id: d.package, active: true });

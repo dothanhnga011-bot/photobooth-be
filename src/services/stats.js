@@ -1,11 +1,12 @@
-import { Booking, PrintJob, Room } from "../models/index.js";
+import { PrintJob, Room } from "../models/index.js";
 import { statsCache } from "./read-cache.js";
+import { financialAggregate } from "./revenue-ledger.js";
 
 export async function getStudioStats(currentDate, days, branch = null) {
   const cacheKey = `studio:${currentDate}:${days.join(",")}:${branch || ""}`;
   return statsCache.get(cacheKey, async () => {
     const [result, rooms, printQueue] = await Promise.all([
-      Booking.aggregate([
+      financialAggregate([
         { $match: branch ? { branch } : {} },
         {
           $facet: {
@@ -75,7 +76,7 @@ export async function getMonthRevenue(month, branch = null) {
     const [year, m] = month.split("-").map(Number);
     const count = new Date(Date.UTC(year, m, 0)).getUTCDate();
     const day = (d) => `${month}-${String(d).padStart(2, "0")}`;
-    const rows = await Booking.aggregate([
+    const rows = await financialAggregate([
       { $match: { paid: true, date: { $gte: day(1), $lte: day(count) }, ...(branch && { branch }) } },
       {
         $group: {
@@ -138,7 +139,7 @@ export async function getSummary({ from, to, branch = null, room = null }) {
   return statsCache.get(cacheKey, async () => {
     const prev = previousRange(from, to);
     const [[current], [previous]] = await Promise.all([
-      Booking.aggregate([
+      financialAggregate([
         { $match: { paid: true, date: { $gte: from, $lte: to }, ...scope({ branch, room }) } },
         {
           $facet: {
@@ -179,7 +180,7 @@ export async function getSummary({ from, to, branch = null, room = null }) {
           },
         },
       ]),
-      Booking.aggregate([
+      financialAggregate([
         { $match: { paid: true, date: { $gte: prev.from, $lte: prev.to }, ...scope({ branch, room }) } },
         { $group: { _id: null, orders: { $sum: 1 }, revenue: { $sum: { $ifNull: ["$total", 0] } } } },
       ]),
@@ -222,7 +223,7 @@ export async function getRevenueSeries({ from, to, branch = null, room = null })
       unit === "day"
         ? previousRange(from, to)
         : { from: shiftYear(from, -1), to: shiftYear(to, -1) };
-    const rows = await Booking.aggregate([
+    const rows = await financialAggregate([
       {
         $match: {
           paid: true,

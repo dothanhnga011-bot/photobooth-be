@@ -6,12 +6,15 @@ import mongoose from "mongoose";
 import request from "supertest";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { app } from "../src/app.js";
-import { Booking, PrintJob } from "../src/models/index.js";
+import { Booking, PrintJob, RevenueEntry } from "../src/models/index.js";
 import { MEDIA_TTL_MS, photoExpiry, purgeExpiredMedia, readMedia, saveMedia } from "../src/services/media.js";
 import { getMonthRevenue, getRevenueSeries, getSummary } from "../src/services/stats.js";
 import { statsCache } from "../src/services/read-cache.js";
 import { getStorageSummary } from "../src/services/media-storage.js";
 import { visibleBookingHistory } from "../src/services/booking-history.js";
+import { archiveBookingRevenue, financialAggregate, rejectArchivedSale } from "../src/services/revenue-ledger.js";
+import { expiredBookingHistory } from "../src/services/booking-history.js";
+import { shiftSummary } from "../src/routes/admin/shifts.js";
 
 let memory;
 const hour = 3_600_000;
@@ -33,10 +36,10 @@ const oldBooking = (now, patch = {}) => ({
 before(async () => {
   memory = await MongoMemoryServer.create();
   await mongoose.connect(memory.getUri());
-  await Promise.all([Booking.init(), PrintJob.init()]);
+  await Promise.all([Booking.init(), PrintJob.init(), RevenueEntry.init()]);
 });
 beforeEach(async () => {
-  await Promise.all([Booking.deleteMany({}), PrintJob.deleteMany({}),
+  await Promise.all([Booking.deleteMany({}), PrintJob.deleteMany({}), RevenueEntry.deleteMany({}),
     mongoose.connection.db.collection("media.files").deleteMany({}),
     mongoose.connection.db.collection("media.chunks").deleteMany({})]);
   statsCache.clear();
@@ -60,7 +63,8 @@ test("72-hour retention deletes every media variant and customer data while all 
   const reports = async () => {
     statsCache.clear();
     return Promise.all([getSummary({ from: b.date, to: b.date }), getMonthRevenue(b.date.slice(0, 7)),
-      getRevenueSeries({ from: b.date, to: b.date })]);
+      getRevenueSeries({ from: b.date, to: b.date }),
+      shiftSummary(b.branch, new Date(now - MEDIA_TTL_MS - 2 * hour), new Date(now))]);
   };
   const beforeReports = await reports();
   assert.equal(beforeReports[0].revenue, 90000);
@@ -74,18 +78,20 @@ test("72-hour retention deletes every media variant and customer data while all 
   assert.equal(await purgeExpiredMedia(expiredAt), 1);
   for (const file of files) assert.equal(await readMedia(file), null, `${file} removed`);
   assert.equal(await PrintJob.countDocuments(), 0);
-  const after = await Booking.findById(b._id).select("+accessToken +captureSession +captureDiag +requestKey +requestFingerprint +extraPrintKeys").lean();
+  assert.equal(await Booking.findById(b._id), null, "the booking document is physically removed");
+  const after = await RevenueEntry.findById(b._id).select("+requestKey").lean();
   for (const key of ["name", "phone", "accessToken", "captureSession", "captureDiag", "captureEndsAt", "video", "composite", "mediaExpiresAt"])
     assert.equal(after[key], undefined, `${key} removed`);
-  assert.deepEqual(after.photos, []);
-  assert.equal(after.customerDataDeletedAt.getTime(), expiredAt.getTime());
-  assert.equal(after.active, false);
+  assert.equal(after.photos, undefined);
+  assert.equal(after.archivedAt.getTime(), expiredAt.getTime());
+  assert.equal(after.active, undefined);
   assert.equal(after.requestKey, b.requestKey, "sale retry cannot create another charge");
-  assert.deepEqual(after.extraPrintKeys, ["extra-sale-key"]);
+  assert.equal(after.extraPrintKeys, undefined);
   assert.equal(after.cashBills?.length || 0, 0, "individual bill events are removed");
   assert.equal(after.cashReceived, 100000, "cash total is retained");
   assert.equal(await Booking.countDocuments(visibleBookingHistory(expiredAt, MEDIA_TTL_MS)), 0);
   assert.deepEqual(await reports(), beforeReports);
+  await assert.rejects(rejectArchivedSale(b.requestKey), { status: 410 });
   await request(app).get(`/api/albums/${b.accessToken}`).expect(404);
   assert.equal(await purgeExpiredMedia(expiredAt), 0, "second pass is idempotent");
 });
@@ -100,7 +106,8 @@ test("only expired finished customers are pruned; active, future scheduled and r
     oldBooking(now, { status: "cancelled", createdAt: new Date(now - hour) }),
   ]);
   await purgeExpiredMedia(new Date(now));
-  assert.equal((await Booking.findById(finished._id)).name, undefined);
+  assert.equal(await Booking.findById(finished._id), null);
+  assert.ok(await RevenueEntry.exists({ _id: finished._id }));
   for (const b of protectedRows) {
     const after = await Booking.findById(b._id).select("+accessToken");
     assert.equal(after.name, b.name);
@@ -123,7 +130,10 @@ test("remaining photos and live print files prevent early customer-data deletion
   assert.ok(await readMedia("fresh.jpg"));
   assert.ok(await readMedia("print.png"));
   await purgeExpiredMedia(new Date(now + MEDIA_TTL_MS));
-  for (const row of [b, printOnly]) assert.equal((await Booking.findById(row._id)).name, undefined);
+  for (const row of [b, printOnly]) {
+    assert.equal(await Booking.findById(row._id), null);
+    assert.ok(await RevenueEntry.exists({ _id: row._id }));
+  }
   assert.equal(await readMedia("print.png"), null);
 });
 
@@ -142,10 +152,11 @@ test("expired unused codes and abandoned drafts lose customer history but retain
   assert.deepEqual(visible.map(b => String(b._id)).sort(), protectedRows.map(b => String(b._id)).sort(), "old history is hidden even before cleanup");
   await purgeExpiredMedia(new Date(now));
   for (const b of expired) {
-    const after = await Booking.findById(b._id).select("+accessToken").lean();
+    assert.equal(await Booking.findById(b._id), null);
+    const after = await RevenueEntry.findById(b._id).lean();
     assert.equal(after.name, undefined);
     assert.equal(after.accessToken, undefined);
-    assert.ok(after.customerDataDeletedAt);
+    assert.ok(after.archivedAt);
     assert.deepEqual([after.paid, after.total, after.paymentMethod, after.date], [b.paid, b.total, b.paymentMethod, b.date]);
   }
   for (const b of protectedRows) assert.equal((await Booking.findById(b._id)).name, b.name);
@@ -165,17 +176,18 @@ test("a storage deletion failure keeps customer data and references for the next
   assert.ok(await readMedia("retry.jpg"));
   await purgeExpiredMedia(new Date(now));
   assert.equal(await readMedia("retry.jpg"), null);
-  assert.equal((await Booking.findById(b._id)).name, undefined);
+  assert.equal(await Booking.findById(b._id), null);
+  assert.ok(await RevenueEntry.exists({ _id: b._id }));
 });
 
-test("old records are compacted across cursor batches without removing a sale", async () => {
+test("old records leave Booking across cursor batches while every sale remains in the ledger", async () => {
   const now = Date.now();
   await Booking.insertMany(Array.from({ length: 501 }, () => oldBooking(now)));
   await purgeExpiredMedia(new Date(now));
-  assert.equal(await Booking.countDocuments(), 501);
-  assert.equal(await Booking.countDocuments({ customerDataDeletedAt: { $ne: null } }), 501);
+  assert.equal(await Booking.countDocuments(), 0);
+  assert.equal(await RevenueEntry.countDocuments(), 501);
   assert.equal(await Booking.countDocuments({ name: { $exists: true } }), 0);
-  const [money] = await Booking.aggregate([{ $group: { _id: null, total: { $sum: "$total" } } }]);
+  const [money] = await financialAggregate([{ $match: {} }, { $group: { _id: null, total: { $sum: "$total" } } }]);
   assert.equal(money.total, 501 * 90000);
 });
 
@@ -198,5 +210,39 @@ test("a video/composite-only album without a legacy expiry is blocked on time an
   await purgeExpiredMedia(new Date(now));
   assert.equal(await readMedia("video-only.mp4"), null);
   assert.equal(await readMedia("composite-only.jpg"), null);
-  assert.equal((await Booking.findById(b._id)).name, undefined);
+  assert.equal(await Booking.findById(b._id), null);
+  assert.ok(await RevenueEntry.exists({ _id: b._id }));
+});
+
+test("ledger failures retain Booking and an interrupted copy never double-counts money on retry", async () => {
+  const now = new Date(), b = await Booking.create(oldBooking(Number(now)));
+  const eligible = expiredBookingHistory(now, MEDIA_TTL_MS);
+  const failure = mock.method(RevenueEntry, "replaceOne", async () => { throw new Error("ledger unavailable"); });
+  try { await assert.rejects(archiveBookingRevenue(b._id, eligible, now), /ledger unavailable/); }
+  finally { failure.mock.restore(); }
+  assert.ok(await Booking.findById(b._id), "no deletion without a verified financial copy");
+  assert.equal(await RevenueEntry.countDocuments(), 0);
+  const stopDelete = mock.method(Booking, "deleteOne", async () => { throw new Error("interrupted after copy"); });
+  try { await assert.rejects(archiveBookingRevenue(b._id, eligible, now), /interrupted after copy/); }
+  finally { stopDelete.mock.restore(); }
+  assert.equal(await Booking.countDocuments(), 1);
+  assert.equal(await RevenueEntry.countDocuments(), 1);
+  const before = await getSummary({ from: b.date, to: b.date });
+  assert.equal(before.revenue, 90000, "overlap counts once");
+  await archiveBookingRevenue(b._id, eligible, now);
+  assert.equal(await Booking.countDocuments(), 0);
+  assert.equal(await RevenueEntry.countDocuments(), 1);
+  statsCache.clear();
+  assert.deepEqual(await getSummary({ from: b.date, to: b.date }), before);
+});
+
+test("previously compacted financial stubs also leave Booking", async () => {
+  const now = Date.now();
+  const b = await Booking.create(oldBooking(now, { customerDataDeletedAt: new Date(now - hour), active: false, mediaDeleted: true }));
+  await purgeExpiredMedia(new Date(now));
+  assert.equal(await Booking.findById(b._id), null);
+  const entry = await RevenueEntry.findById(b._id).lean();
+  assert.equal(entry.total, b.total);
+  for (const key of ["name", "phone", "code", "photos", "cashBills", "captureDiag", "accessToken"])
+    assert.equal(entry[key], undefined);
 });

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { rejectArchivedSale } from "../../services/revenue-ledger.js";
 import crypto from "node:crypto";
 import { z } from "zod";
 import { Booking, Room, Package } from "../../models/index.js";
@@ -51,6 +52,7 @@ ticketsRouter.post("/draft", auth, bookingLimit, async (req, res) => {
       fail(403, "Phiếu này do tài khoản khác tạo.");
     return res.json(publicBooking(existing));
   }
+  await rejectArchivedSale(d.requestKey);
   const [room, pack] = await Promise.all([
     d.room ? Room.findOne({ _id: d.room, active: true }) : null,
     Package.findOne({ _id: d.package, active: true }),
@@ -196,6 +198,7 @@ ticketsRouter.post("/", auth, bookingLimit, async (req, res) => {
     if (existing && existing.requestFingerprint !== requestFingerprint)
       fail(409, "Thông tin tạo mã đã thay đổi. Vui lòng kiểm tra lại.");
     if (existing) requireBranch(req, existing.branch);
+    else await rejectArchivedSale(d.requestKey);
     return existing;
   };
   const previous = await replay();

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import { Booking, Room, Shift } from "../../models/index.js";
+import { Room, Shift } from "../../models/index.js";
+import { financialAggregate } from "../../services/revenue-ledger.js";
 import { allow, requireBranch, staffBranch } from "../../middleware/auth.js";
 import { fail, id, today } from "../validation.js";
 
@@ -14,7 +15,7 @@ const method = (field) => ({ $cond: [{ $eq: [field, "transfer"] }, "transfer", "
 export async function shiftSummary(branch, from, to = new Date()) {
   const window = { $gte: from, $lte: to };
   const [tickets, extras] = await Promise.all([
-    Booking.aggregate([
+    financialAggregate([
       { $match: { branch, paid: true, paidAt: window } },
       { $group: {
         _id: method("$paymentMethod"),
@@ -25,7 +26,7 @@ export async function shiftSummary(branch, from, to = new Date()) {
         ] } },
       } },
     ]),
-    Booking.aggregate([
+    financialAggregate([
       { $match: { branch, "extraSales.at": window } },
       { $unwind: "$extraSales" },
       { $match: { "extraSales.at": window } },
@@ -90,9 +91,10 @@ shiftsRouter.get("/report", allow("revenue:view"), async (req, res) => {
     Shift.find({ open: false, openedAt: window, ...(branch && { branch }) })
       .sort({ openedAt: -1 })
       .lean(),
-    branch ? [branch] : Booking.distinct("branch", {
-      $or: [{ paid: true, paidAt: window }, { "extraSales.at": window }],
-    }),
+    branch ? [branch] : financialAggregate([
+      { $match: { $or: [{ paid: true, paidAt: window }, { "extraSales.at": window }] } },
+      { $group: { _id: "$branch" } },
+    ]).then(rows => rows.map(row => row._id)),
   ]);
   const names = [...new Set([...paidBranches, ...shifts.map((s) => s.branch)])]
     .filter(Boolean)
