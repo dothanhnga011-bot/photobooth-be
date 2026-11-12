@@ -355,7 +355,7 @@ export const openapi = {
         {
           name: str("Tên phòng", { example: "Room 01" }),
           description: { type: "string", example: "" },
-          branch: str("Chi nhánh", { example: "NXC" }),
+          branch: str("Thông tin định tuyến nội bộ. Có thể bỏ khi lưu phòng: sửa giữ giá trị cũ; thêm mới lấy từ tài khoản hoặc phòng hiện có, mặc định “Mặc định”.", { example: "NXC" }),
           machineCode: str("Mã máy"),
           model: str("Dòng máy"),
           flip: enumOf(["device", "on", "off"], "Chế độ lật ảnh: theo máy / luôn lật / không lật"),
@@ -363,7 +363,7 @@ export const openapi = {
           paymentTest: bool("Chế độ thử: có nút bỏ qua trả tiền"),
           active: { type: "boolean", example: true },
         },
-        ["name", "description", "branch", "active"],
+        ["name", "description", "active"],
       ),
       Package: object(
         {

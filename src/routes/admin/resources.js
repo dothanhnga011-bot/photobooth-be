@@ -57,7 +57,7 @@ const resources = {
     z.object({
       name: text,
       description: z.string().max(1000),
-      branch: text,
+      branch: text.optional(),
       machineCode: z.string().trim().max(100).default(""),
       model: z.string().trim().max(100).default(""),
       importedAt: z.string().date().or(z.literal("")).nullable().default(null),
@@ -212,6 +212,18 @@ for (const [route, [Model, schema]] of Object.entries(resources)) {
   );
   const save = async (req, res) => {
     const d = schema.parse(req.body);
+    // The room form no longer asks for a branch. Edits preserve the stored value;
+    // a new room inherits the account or an existing room so code/print routing
+    // stays compatible with older rooms, staff accounts and installed agents.
+    if (route === "rooms" && d.branch === undefined) {
+      delete d.branch;
+      if (!req.params.id) {
+        const accountBranch = req.user.branch?.trim();
+        const existingRoom = !accountBranch && await Room.findOne({ branch: { $type: "string", $ne: "" } })
+          .sort({ active: -1, createdAt: 1, _id: 1 }).select("branch").lean();
+        d.branch = accountBranch || existingRoom?.branch || "Mặc định";
+      }
+    }
     if (route === "users") {
       if (!req.params.id && !d.password)
         fail(400, "Vui lòng nhập mật khẩu (ít nhất 10 ký tự).");
