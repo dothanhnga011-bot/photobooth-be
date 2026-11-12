@@ -20,7 +20,7 @@ import {
   storedVideo,
   storedVideoSize,
 } from "../services/direct-upload.js";
-import { sensitive } from "../middleware/rate-limits.js";
+import { kioskDeviceKey, sensitive } from "../middleware/rate-limits.js";
 import { deleteMedia, saveMedia } from "../services/media.js";
 import { mediaReference } from "../services/r2.js";
 import { fail, today, token } from "./validation.js";
@@ -109,7 +109,7 @@ async function deviceRoom(token) {
 // Khách tự mua lượt chụp tại máy: chọn gói, số tờ in, đút tiền vào máy nhận tiền (máy chụp gửi
 // từng tờ đã nhận) rồi vào chụp luôn — không cần mã ở quầy. Chế độ thử (paymentTest) cho bỏ qua
 // bước trả tiền để thử máy khi chưa lắp máy nhận tiền: vé thử không tính doanh thu.
-kioskRouter.post("/sale", sensitive(), async (req, res) => {
+kioskRouter.post("/sale", sensitive({ key: kioskDeviceKey }), async (req, res) => {
   const d = z.object({
     device: z.string().max(2000),
     package: z.string().regex(/^[a-f\d]{24}$/i),
@@ -210,7 +210,7 @@ kioskRouter.post("/sale", sensitive(), async (req, res) => {
   fail(503, "Không tạo được lượt chụp. Vui lòng thử lại.");
 });
 // Legacy replay only: new Polaroid sessions require a paid counter code.
-kioskRouter.post("/polaroid", sensitive(), async (req, res) => {
+kioskRouter.post("/polaroid", sensitive({ key: kioskDeviceKey }), async (req, res) => {
   const d = z.object({
     device: z.string().max(2000),
     package: z.string().regex(/^[a-f\d]{24}$/i),
@@ -241,7 +241,7 @@ const saleSession = (b, room, sessionId) => ({
   ),
 });
 
-kioskRouter.post("/claim", sensitive(), async (req, res) => {
+kioskRouter.post("/claim", sensitive({ key: kioskDeviceKey }), async (req, res) => {
   const d = z
     .object({
       code: z.string().regex(/^\d{6}$/, "Mã vé gồm 6 chữ số."),

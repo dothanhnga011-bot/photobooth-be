@@ -1,4 +1,5 @@
-import rateLimit from "express-rate-limit";
+import crypto from "node:crypto";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 
 export const apiLimit = rateLimit({
   windowMs: 60000,
@@ -21,13 +22,26 @@ export const apiLimit = rateLimit({
     /^\/albums\/[^/]+\/photos\/original(-url)?$/.test(req.path),
 });
 
-export const sensitive = () =>
+// Máy chụp gửi kèm liên kết đã ký của máy (device): mỗi máy một hạn mức riêng. Mọi máy trong tiệm
+// chung một IP Wi-Fi (qua Cloudflare có thể chung cả IP với người ngoài), nên tính theo IP thì khách
+// nhập nhầm mã ở vài phòng cộng lại là khoá mọi máy 15 phút. Chống dò mã từng máy vẫn có KioskAttempt
+// (sai 5 lần khoá máy đó 5 phút); liên kết giả không mở được lượt chụp nào.
+export const kioskDeviceKey = (req) => {
+  const device = req.body?.device;
+  return typeof device === "string" && device
+    ? `device:${crypto.createHash("sha256").update(device).digest("hex")}`
+    : "";
+};
+
+// key: khoá riêng cho từng yêu cầu (vd. kioskDeviceKey); không có thì tính theo IP.
+export const sensitive = ({ key } = {}) =>
   rateLimit({
     windowMs: 15 * 60000,
     limit: 25,
     skipSuccessfulRequests: true,
     standardHeaders: "draft-8",
     legacyHeaders: false,
+    ...(key && { keyGenerator: (req) => key(req) || ipKeyGenerator(req.ip) }),
     message: {
       message:
         "Quá nhiều lần thử không thành công. Vui lòng thử lại sau 15 phút.",
