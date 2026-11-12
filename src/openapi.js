@@ -1224,7 +1224,10 @@ export const openapi = {
           "Khách chỉ chụp bằng nút chụp / remote của máy ảnh: ảnh gốc về thư mục X Acquire, máy chụp đọc rồi gửi lên bằng POST /api/kiosk/photo.",
         requestBody: body({ captureToken }, ["captureToken"]),
         responses: {
-          ...ok("Đã bắt đầu", object({ booking: ref("Booking") })),
+          ...ok("Đã bắt đầu", object({
+            booking: ref("Booking"),
+            serverTime: int("Giờ máy chủ (ms) để máy chụp bù đồng hồ lệch khi đếm giờ"),
+          })),
           ...errors(401, 403, 409),
         },
       },
@@ -1260,6 +1263,7 @@ export const openapi = {
             "Trạng thái phiên",
             object({
               booking: ref("Booking"),
+              serverTime: int("Giờ máy chủ (ms) để máy chụp bù đồng hồ lệch"),
             }),
           ),
           ...errors(401, 403, 409),

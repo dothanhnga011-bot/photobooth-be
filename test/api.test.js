@@ -758,21 +758,25 @@ const jpeg = async (width, height, color = "#722f3e") =>
       .toBuffer()
   ).toString("base64")}`;
 
-test("a paid ticket keeps its purchased duration after the package is edited", async () => {
+test("the shoot time follows the price table when the guest starts, and the reply carries the server clock", async () => {
   const { b, session } = await startSession();
   try {
     assert.equal(b.captureDuration, 20);
+    // Tiệm sửa thời gian chụp của gói sau khi đã bán mã: khách chụp theo bảng giá mới.
     await Package.updateOne({ _id: pack._id }, { duration: 5 });
     const started = await request(app)
       .post("/api/kiosk/start")
       .send({ captureToken: session.captureToken })
       .expect(200);
-    assert.equal(started.body.booking.captureDuration, 20);
+    assert.equal(started.body.booking.captureDuration, 5);
     assert.ok(
       Math.abs(
-        new Date(started.body.booking.captureEndsAt) - Date.now() - 20 * 60000,
+        new Date(started.body.booking.captureEndsAt) - Date.now() - 5 * 60000,
       ) < 5000,
     );
+    assert.ok(Math.abs(started.body.serverTime - Date.now()) < 5000, "serverTime lets the kiosk correct its clock");
+    // Đã bắt đầu thì sửa bảng giá không đổi giờ kết thúc của lượt đang chụp.
+    await Package.updateOne({ _id: pack._id }, { duration: 30 });
     const resumed = await request(app)
       .post("/api/kiosk/start")
       .send({ captureToken: session.captureToken })

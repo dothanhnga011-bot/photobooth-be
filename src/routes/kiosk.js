@@ -329,11 +329,13 @@ kioskRouter.post("/start", async (req, res) => {
   const d = z.object({ captureToken: z.string() }).parse(req.body);
   const { b, payload } = await captureBooking(d.captureToken);
   if (!b.captureStartedAt && b.status === "checked_in") {
-    // Older tickets have no snapshot; only those fall back to the current package.
-    if (!b.captureDuration) {
-      const pack = await Package.findById(b.package);
-      b.captureDuration = (b.printSize === "instax" ? polaroidDuration(b.selectCount) : null) || pack?.duration || 10;
-    }
+    // Thời gian chụp theo bảng giá lúc khách bắt đầu chụp (Khổ ảnh & bảng giá): sửa thời gian của gói thì
+    // mã đã bán mà chưa chụp cũng theo. Layout Polaroid: thời gian của layout. Gói đã xoá: giữ thời gian
+    // lúc bán (vé cũ không có thì 10 phút).
+    const current = b.printSize === "instax"
+      ? polaroidDuration(b.selectCount)
+      : b.package && (await Package.findById(b.package).select("duration").lean())?.duration;
+    b.captureDuration = current || b.captureDuration || 10;
     b.captureStartedAt = new Date();
     b.captureEndsAt = new Date(b.captureStartedAt.getTime() + b.captureDuration * 60000);
     b.captureMode = "folder";
@@ -341,16 +343,17 @@ kioskRouter.post("/start", async (req, res) => {
     b.captureSeenAt = new Date();
     await b.save();
   } else await touchKiosk(b);
-  res.json({ booking: publicBooking(b) });
+  // serverTime: máy chụp tự bù đồng hồ lệch (mini PC chạy nhanh / chậm) khi đếm giờ và lọc ảnh trong phiên.
+  res.json({ booking: publicBooking(b), serverTime: Date.now() });
 });
 kioskRouter.post("/state", async (req, res) => {
   const captureToken = z.string().parse(req.body.captureToken);
   const diag = kioskDiag.parse(req.body.diag);
   const live = await touchKioskFast(captureToken, diag);
-  if (live) return res.json({ booking: publicBooking(live) });
+  if (live) return res.json({ booking: publicBooking(live), serverTime: Date.now() });
   const { b } = await captureBooking(captureToken);
   await touchKiosk(b, diag);
-  res.json({ booking: publicBooking(b) });
+  res.json({ booking: publicBooking(b), serverTime: Date.now() });
 });
 // The camera original goes straight to storage (direct-upload.js): a URL for one photo.
 kioskRouter.post("/photo/upload-url", async (req, res) => {
