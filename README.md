@@ -278,10 +278,13 @@ Link WIDE khác ở mục ngay sau.
 Khung Instax: Quản trị → Khung ảnh → Thêm mới → **Size Instax** (thẻ Instax Wide, ảnh ngang 1800 × 1200 — chừa
 lề ~50 px trên / dưới, ~20 px hai bên vì phim che mép). Mỗi tấm in là ảnh ngang 1260 × 840
 (`scripts/instax-bridge.py` nén vừa giới hạn của máy in). Quản trị → Khổ ảnh & bảng giá → tab **Polaroid** →
-**Tạo 6 layout mẫu** tạo layout 1, 2, 3, 4, 5 (2 ảnh to bên trái + 3 ảnh bé bên phải), 6 ảnh (110.000 đ, 5 phút chụp, in 1 tấm) kèm
-khung trắng đúng số ô trong chủ đề “Layout trắng”; layout / khung đã có cùng số ảnh được giữ nguyên. Layout
-Polaroid luôn in đúng 1 tấm và không giới hạn số lần chụp (lượt chụp không ghi số lần chụp, chỉ có thời gian chụp);
-khách nhận toàn bộ ảnh gốc qua mã QR, phòng Polaroid không quay video.
+**Tạo 2 layout mẫu** tạo gói ảnh nhỏ (chọn 1 ảnh, chụp 3 phút) và ảnh to (chọn 2 ảnh, chụp 5 phút), kèm
+khung trắng; layout / khung cùng số ảnh đã có được giữ nguyên. Nhân viên bán gói và xác nhận thanh toán ở
+quầy qua `POST /api/admin/tickets`, khách nhập mã 6 số ở kiosk qua `POST /api/kiosk/claim`.
+Mã phải đúng chi nhánh, đúng loại phòng, đã thanh toán và chưa hết hạn 2 giờ. Đường `/api/kiosk/polaroid`
+cũ chỉ khôi phục phiên đang chụp đã tạo trước bản cập nhật, không tạo lượt mới.
+Polaroid luôn in đúng 1 tấm, bấm dây Canon không giới hạn trong thời gian chụp; khách nhận toàn bộ ảnh gốc
+qua mã QR, phòng Polaroid không quay video. Trên kiosk ngang, live view chiếm 2/3 và cột ảnh vừa chụp chiếm 1/3.
 
 #### Máy Instax Link WIDE
 

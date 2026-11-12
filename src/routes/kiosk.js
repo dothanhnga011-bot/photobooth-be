@@ -7,7 +7,7 @@ import sharp from "sharp";
 import { z } from "zod";
 import { config } from "../config.js";
 import { Booking, Room, Package, KioskAttempt, Setting } from "../models/index.js";
-import { extraPriceFor, INSTAX_SHEETS, minSheets, piecesPerSheet, saleTotal } from "./print-count.js";
+import { extraPriceFor, minSheets, piecesPerSheet, saleTotal } from "./print-count.js";
 import { instaxState, readPrinterStatus } from "../services/printer-status.js";
 import { appendCapture, finishCapture } from "../services/capture.js";
 import { timed, saveImageTask } from "../services/image-save-queue.js";
@@ -209,8 +209,7 @@ kioskRouter.post("/sale", sensitive(), async (req, res) => {
   }
   fail(503, "Không tạo được lượt chụp. Vui lòng thử lại.");
 });
-// Phòng Polaroid: khách chọn layout (gói khổ Instax) rồi vào chụp luôn, trả tiền ở quầy. Lượt chụp
-// ghi là chưa thu tiền; nhân viên bấm "Đã thu tiền" ở Đơn hàng khi khách trả.
+// Legacy replay only: new Polaroid sessions require a paid counter code.
 kioskRouter.post("/polaroid", sensitive(), async (req, res) => {
   const d = z.object({
     device: z.string().max(2000),
@@ -221,61 +220,15 @@ kioskRouter.post("/polaroid", sensitive(), async (req, res) => {
   const existing = await Booking.findOne({ requestKey: d.requestKey }).select("+accessToken +captureSession");
   if (existing) {
     if (String(existing.room) !== String(room._id)) fail(409, "Mã giao dịch đã dùng ở máy khác.");
+    if (existing.source !== "polaroid" || existing.status !== "checked_in")
+      fail(410, "Phòng Polaroid dùng mã chụp đã thanh toán tại quầy.");
     if (!existing.captureSession) fail(409, "Lượt chụp này đã kết thúc.");
     return res.json(saleSession(existing, room, existing.captureSession));
   }
   await rejectArchivedSale(d.requestKey);
   if (room.kind !== "polaroid")
     fail(403, "Đây là phòng photobooth — khách chọn Nhập mã hoặc Tiền mặt. Đổi loại phòng ở Quản trị → Quản lý máy.");
-  const pack = await Package.findOne({ _id: d.package, active: true });
-  if (!pack || pack.printSize !== "instax") fail(400, "Layout không còn hoạt động.");
-  const duration = polaroidDuration(pack.selectCount);
-  if (!duration) fail(400, "Polaroid chỉ hỗ trợ ảnh nhỏ chọn 1 ảnh (3 phút) hoặc ảnh to chọn 2 ảnh (5 phút). Nhờ nhân viên sửa layout.");
-  if (pack.branches?.length && !pack.branches.includes(room.branch))
-    fail(400, `Layout “${pack.name}” không áp dụng tại chi nhánh ${room.branch}.`);
-  const sessionId = token();
-  const now = new Date();
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try {
-      const b = await Booking.create({
-        code: String(crypto.randomInt(100000, 1000000)),
-        accessToken: token(),
-        name: "Khách Polaroid",
-        branch: room.branch,
-        room: room._id,
-        roomName: room.name,
-        package: pack._id,
-        packageName: pack.name,
-        // Không ghi số lần chụp: khách bấm dây không giới hạn trong thời gian chụp. Layout in đúng
-        // 1 tấm Instax (gói cũ ghi 2 tấm cũng chỉ in 1).
-        countdownSeconds: pack.countdownSeconds || 10,
-        selectCount: pack.selectCount,
-        printSize: "instax",
-        captureDuration: duration,
-        prints: INSTAX_SHEETS,
-        total: Number(pack.price) || 0,
-        discount: 0,
-        source: "polaroid",
-        date: today(),
-        time: "",
-        // Trả tiền ở quầy: chưa tính là đã thu cho tới khi nhân viên xác nhận.
-        paid: false,
-        status: "checked_in",
-        captureSession: sessionId,
-        captureSeenAt: now,
-        requestKey: d.requestKey,
-      });
-      return res.status(201).json(saleSession(b, room, sessionId));
-    } catch (error) {
-      if (error.code === 11000 && error.keyPattern?.code) continue;
-      if (error.code === 11000 && error.keyPattern?.requestKey) {
-        const replay = await Booking.findOne({ requestKey: d.requestKey }).select("+accessToken +captureSession");
-        if (replay) return res.json(saleSession(replay, room, replay.captureSession));
-      }
-      throw error;
-    }
-  }
-  fail(503, "Không tạo được lượt chụp. Vui lòng thử lại.");
+  fail(410, "Phòng Polaroid dùng mã chụp đã thanh toán tại quầy. Vui lòng tải lại kiosk rồi nhập mã 6 số.");
 });
 const saleSession = (b, room, sessionId) => ({
   flip: room.flip || "device",

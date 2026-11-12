@@ -465,36 +465,47 @@ test("Instax: unlimited shots, fixed 3/5-minute packages, one print and its own 
   await admin.put("/api/admin/settings/extra-print-price").send({ extraInstaxPrice: 30000 }).expect(200);
   const prices = (await request(app).get("/api/catalog").expect(200)).body.settings;
   assert.deepEqual([prices.extraPrintPrice, prices.extraInstaxPrice], [15000, 30000]);
-  // Phòng Polaroid: khách chọn layout (gói khổ Instax) rồi vào chụp luôn, trả tiền ở quầy.
+  // Polaroid sells a code at the counter; the kiosk cannot open a fresh unpaid layout.
   const layout = { device: token, package: String(pack._id), requestKey: randomUUID() };
-  const started = (await request(app).post("/api/kiosk/polaroid").send(layout).expect(201)).body;
+  const beforeLegacy = await Booking.countDocuments();
+  await request(app).post("/api/kiosk/polaroid").send(layout).expect(410);
+  assert.equal(await Booking.countDocuments(), beforeLegacy);
+  const sell = key => admin.post('/api/admin/tickets').send({ package: String(pack._id), room: String(room._id),
+    requestKey: key, expectedTotal: 120000, paymentMethod: 'transfer', paymentReceived: true });
+  const sold = (await sell(layout.requestKey).expect(201)).body;
+  const started = (await request(app).post('/api/kiosk/claim').send({ device: token, code: sold.code }).expect(200)).body;
   assert.ok(started.captureToken && started.accessToken);
   // Gửi lại sau khi mất phản hồi: đúng lượt chụp cũ, không tạo đơn mới.
-  const replay = (await request(app).post("/api/kiosk/polaroid").send(layout).expect(200)).body;
-  assert.equal(replay.booking._id, started.booking._id);
+  const replay = (await sell(layout.requestKey).expect(200)).body;
+  assert.equal(replay._id, started.booking._id);
   let stored = await Booking.findById(started.booking._id).lean();
   assert.deepEqual([stored.printSize, stored.prints, stored.total, stored.paid, stored.source, stored.status],
-    ["instax", 1, 120000, false, "polaroid", "checked_in"]);
+    ["instax", 1, 120000, true, "counter", "checked_in"]);
   assert.equal(stored.shots, undefined);
   assert.deepEqual([stored.captureDuration, stored.selectCount], [3, 1]);
   const smallStart = (await request(app).post("/api/kiosk/start").send({ captureToken: started.captureToken }).expect(200)).body.booking;
   assert.equal(new Date(smallStart.captureEndsAt) - new Date(smallStart.captureStartedAt), 180000);
   await Package.updateOne({ _id: pack._id }, { selectCount: 2, duration: 22 });
-  const largeSession = (await request(app).post("/api/kiosk/polaroid").send({ ...layout, requestKey: randomUUID() }).expect(201)).body;
+  const largeCode = (await sell(randomUUID()).expect(201)).body;
+  const largeSession = (await request(app).post('/api/kiosk/claim').send({ device: token, code: largeCode.code }).expect(200)).body;
   assert.deepEqual([largeSession.booking.selectCount, largeSession.booking.captureDuration, largeSession.booking.shots], [2, 5, undefined]);
   const largeStart = (await request(app).post("/api/kiosk/start").send({ captureToken: largeSession.captureToken }).expect(200)).body.booking;
   assert.equal(new Date(largeStart.captureEndsAt) - new Date(largeStart.captureStartedAt), 300000);
   // Replaying the old request after changing the package keeps its original 3 minutes.
-  const replaySmall = (await request(app).post("/api/kiosk/polaroid").send(layout).expect(200)).body;
-  assert.equal(replaySmall.booking.captureDuration, 3);
+  const replaySmall = (await sell(layout.requestKey).expect(200)).body;
+  assert.equal(replaySmall.captureDuration, 3);
   // Không bán gói Instax bằng tiền mặt ở máy; nhân viên ghi nhận đã thu ở quầy.
   await request(app).post("/api/kiosk/sale").send({ ...layout, requestKey: randomUUID(), bills: [{ amount: 200000 }] }).expect(403);
-  const collected = (await staff.patch(`/api/admin/bookings/${stored._id}`).send({ collected: "transfer" }).expect(200)).body;
-  assert.equal(collected.paid, true);
   stored = await Booking.findById(stored._id).lean();
   assert.deepEqual([stored.paid, stored.paymentMethod], [true, "transfer"]);
   assert.ok(stored.paidAt);
   await staff.patch(`/api/admin/bookings/${stored._id}`).send({ collected: "cash" }).expect(409);
+  // Old sessions opened before the update can still replay their already-created request.
+  const oldKey = randomUUID();
+  const old = await Booking.create({ source: 'polaroid', status: 'checked_in', room: room._id,
+    requestKey: oldKey, captureSession: 'legacy-session', accessToken: randomUUID(), photos: [] });
+  const oldReplay = (await request(app).post('/api/kiosk/polaroid').send({ ...layout, requestKey: oldKey }).expect(200)).body;
+  assert.equal(oldReplay.booking._id, String(old._id));
   // Phòng photobooth không mở lượt Polaroid.
   await admin.put(`/api/admin/rooms/${room._id}`).send({
     name: "Máy 1", description: "", branch: "Bắc Giang", kind: "photobooth", paymentTest: false, active: true,

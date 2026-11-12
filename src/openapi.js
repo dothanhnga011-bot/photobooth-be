@@ -1105,16 +1105,16 @@ export const openapi = {
     "/api/kiosk/polaroid": {
       post: {
         tags: ["Máy chụp (kiosk)"],
-        summary: "Phòng Polaroid: khách chọn layout rồi vào chụp luôn (trả tiền ở quầy)",
-        description: "Chỉ phòng kind = polaroid, package là gói khổ Instax (layout). Đơn ghi source = polaroid, paid = false; " +
-          "nhân viên ghi nhận đã thu bằng PATCH /api/admin/bookings/{id} { collected: cash | transfer }. " +
-          "Gửi lại cùng requestKey trả đúng lượt chụp đã tạo.",
+        deprecated: true,
+        summary: "Khôi phục lượt Polaroid cũ đã mở trước khi chuyển sang mã chụp",
+        description: "Chỉ phát lại requestKey của lượt source = polaroid còn checked_in và có captureSession. " +
+          "Không tạo lượt mới: trả 410, yêu cầu mua mã đã thanh toán tại quầy rồi dùng /api/kiosk/claim.",
         requestBody: body({
           device: str("Mã máy chụp của phòng"),
           package: str("ID gói khổ Instax (layout)"),
           requestKey: uuid,
         }, ["device", "package", "requestKey"]),
-        responses: { ...ok("Lượt chụp đã mở: { booking, accessToken, captureToken, flip }", { type: "object" }, 201), ...errors(400, 403, 409, 429) },
+        responses: { ...ok("Lượt cũ: { booking, accessToken, captureToken, flip }", { type: "object" }), ...errors(400, 403, 409, 410, 429) },
       },
     },
     "/api/kiosk/video": {
