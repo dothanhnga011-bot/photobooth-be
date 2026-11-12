@@ -6,7 +6,7 @@ import { app } from "./app.js";
 import { migrateCounterIndexes } from "./services/counter-indexes.js";
 import { startMediaCleanup } from "./services/media.js";
 import Frame from "./models/Frame.js";
-import { removeActivityLogs } from "./services/activity-log-cleanup.js";
+import { removeActivityLogs, removeRetiredFeatureData } from "./services/activity-log-cleanup.js";
 import { validateMediaStorage } from "./services/r2.js";
 import { backfillImageHashes, backfillThumbs } from "./services/frame-image.js";
 import { ensureDefaultPackages } from "./services/default-packages.js";
@@ -26,6 +26,10 @@ try {
     maxPoolSize: 10,
   });
   await removeActivityLogs();
+  // Dữ liệu của tính năng đã bỏ (Ca trực & Đối soát, chấm công & lương cũ): xoá hẳn, ghi lại đã xoá gì.
+  const retired = await removeRetiredFeatureData();
+  if (retired.removed.length)
+    console.log(`Đã xoá dữ liệu tính năng đã bỏ: ${retired.removed.map((r) => `${r.collection} (${r.documents} bản ghi)`).join(", ")}.`);
   await migrateCounterIndexes();
   // Bỏ các khung màu cũ: khung giờ chỉ tạo bằng cách import ảnh.
   const { deletedCount } = await Frame.deleteMany({

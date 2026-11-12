@@ -323,8 +323,8 @@ Mỗi model nằm trong file riêng ở `src/models/`: `User.js`, `Room.js`, `Pa
 `Setting.js`, `Booking.js`, `PrintJob.js`; `index.js` tổng hợp export.
 
 Tên collection: `users`, `rooms`, `packages`, `frames`, `settings`, `bookings`, `print_jobs`.
-Các collection `pay_adjustments`, `payrolls` của tính năng chấm công & lương cũ và `shifts` của Ca trực & Đối soát (đã bỏ) không còn được dùng —
-dữ liệu cũ vẫn nằm trong MongoDB, xóa tay nếu không cần.
+Các collection `pay_adjustments`, `payrolls` của tính năng chấm công & lương cũ và `shifts` của Ca trực & Đối soát
+(đã bỏ) được xoá hẳn khi backend khởi động (cả dữ liệu và index; log ghi tên và số bản ghi đã xoá).
 
 Nhật ký hoạt động đã được bỏ khỏi ứng dụng và không còn ghi dữ liệu mới.
 Khi khởi động backend, ứng dụng xoá hai collection nhật ký cũ `audits` và `hf_audits`,
