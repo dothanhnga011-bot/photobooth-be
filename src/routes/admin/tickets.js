@@ -7,17 +7,33 @@ import { auth, staffBranch, requireBranch } from "../../middleware/auth.js";
 import { bookingLimit } from "../../middleware/rate-limits.js";
 import { fail, id, phone, token, today } from "../validation.js";
 import { publicBooking } from "../booking-helpers.js";
+import { INSTAX_SHEETS } from "../print-count.js";
+import { polaroidDuration } from "../../polaroid-layouts.js";
 
 export const ticketsRouter = Router();
 const CODE_LIFETIME_MS = 2 * 60 * 60 * 1000;
 
-async function requireCounterRoom(branch, room) {
-  if (room?.kind === "polaroid")
-    fail(400, "Phòng Polaroid chọn layout tại máy và thanh toán ở quầy, không dùng mã chụp.");
-  // Older rooms without a kind are photobooths. Never issue a code at a branch
-  // where no active booth can redeem it (e.g. a Polaroid-only branch).
-  if (!await Room.exists({ branch, active: true, kind: { $ne: "polaroid" } }))
-    fail(400, `Chi nhánh “${branch}” chưa có phòng photobooth đang hoạt động để nhập mã. Vui lòng chọn đúng chi nhánh hoặc kiểm tra loại phòng trong Quản lý máy.`);
+// Mã chụp của gói photobooth (in DNP) chỉ nhập ở phòng photobooth; mã của layout Polaroid (khổ Instax)
+// chỉ nhập ở phòng Polaroid. Không cấp mã ở chi nhánh không có phòng đúng loại để nhập.
+async function requireCounterRoom(branch, room, pack) {
+  const polaroid = pack.printSize === "instax";
+  const kind = polaroid ? "Polaroid" : "photobooth";
+  // Older rooms without a kind are photobooths.
+  if (room && (room.kind === "polaroid") !== polaroid)
+    fail(400, polaroid ? "Layout Polaroid chỉ dùng ở phòng Polaroid." : "Phòng Polaroid chỉ nhận mã của layout Polaroid.");
+  if (!await Room.exists({ branch, active: true, kind: polaroid ? "polaroid" : { $ne: "polaroid" } }))
+    fail(400, `Chi nhánh “${branch}” chưa có phòng ${kind} đang hoạt động để nhập mã. Vui lòng chọn đúng chi nhánh hoặc kiểm tra loại phòng trong Quản lý máy.`);
+}
+// Lượt chụp theo gói. Layout Polaroid: bấm dây không giới hạn trong thời gian của layout (1 ảnh 3 phút,
+// 2 ảnh 5 phút), in đúng 1 tấm Instax — như lượt Polaroid mở ở máy trước đây.
+function captureTerms(pack) {
+  if (pack.printSize !== "instax")
+    return { shots: pack.shots, captureDuration: pack.duration, prints: pack.prints, selectCount: pack.selectCount || 4,
+      printSize: pack.printSize || "full" };
+  const captureDuration = polaroidDuration(pack.selectCount);
+  if (!captureDuration)
+    fail(400, "Polaroid chỉ hỗ trợ ảnh nhỏ chọn 1 ảnh (3 phút) hoặc ảnh to chọn 2 ảnh (5 phút). Nhờ quản trị sửa layout.");
+  return { captureDuration, prints: INSTAX_SHEETS, selectCount: Number(pack.selectCount), printSize: "instax" };
 }
 
 // Phiếu tại quầy không cần thông tin khách. Vẫn kiểm tra khi client cũ gửi kèm.
@@ -58,16 +74,13 @@ ticketsRouter.post("/draft", auth, bookingLimit, async (req, res) => {
     Package.findOne({ _id: d.package, active: true }),
   ]);
   if ((d.room && !room) || !pack) fail(400, "Phòng hoặc gói chụp không còn hoạt động.");
-  // Mã chụp chỉ cho phòng photobooth (in DNP); layout Polaroid (khổ Instax) khách chọn ở máy phòng
-  // Polaroid và trả tiền ở quầy, không dùng mã.
-  if (pack.printSize === "instax")
-    fail(400, "Layout Polaroid không bán bằng mã chụp — khách chọn layout ở máy phòng Polaroid và trả tiền ở quầy.");
+  const terms = captureTerms(pack);
   if (room) requireBranch(req, room.branch);
   const branch = room?.branch || d.branch || assigned;
   if (!branch) fail(400, "Vui lòng chọn chi nhánh trước khi tạo phiếu.");
   requireBranch(req, branch);
   if (room && d.branch && d.branch !== room.branch) fail(400, "Phòng không thuộc chi nhánh đã chọn.");
-  await requireCounterRoom(branch, room);
+  await requireCounterRoom(branch, room, pack);
   // Bảng giá riêng: gói chỉ bán ở các chi nhánh đã chọn (để trống = mọi chi nhánh).
   if (pack.branches?.length && !pack.branches.includes(branch))
     fail(400, `Gói “${pack.name}” không áp dụng tại chi nhánh ${branch}.`);
@@ -82,12 +95,8 @@ ticketsRouter.post("/draft", auth, bookingLimit, async (req, res) => {
       branch,
       package: pack._id,
       packageName: pack.name,
-      shots: pack.shots,
+      ...terms,
       countdownSeconds: pack.countdownSeconds || 10,
-      selectCount: pack.selectCount || 4,
-      printSize: pack.printSize || "full",
-      captureDuration: pack.duration,
-      prints: pack.prints,
       total: pack.price,
       discount: 0,
       source: "counter",
@@ -129,7 +138,8 @@ ticketsRouter.patch("/:id/activate", auth, async (req, res) => {
     return res.json({ ...publicBooking(draft), accessToken: draft.accessToken });
   if (draft.status !== "pending" || draft.paid)
     fail(409, "Mã này không thể kích hoạt.");
-  await requireCounterRoom(draft.branch);
+  // Phiếu lưu khổ in của gói: phiếu Polaroid cần phòng Polaroid, phiếu photobooth cần phòng photobooth.
+  await requireCounterRoom(draft.branch, null, draft);
   const currentPackage = await Package.findById(draft.package).select("price active").lean();
   if (!currentPackage?.active || currentPackage.price !== draft.total)
     fail(409, "Gói chụp hoặc giá đã thay đổi trước khi thu tiền. Vui lòng tạo phiếu mới.");
@@ -213,16 +223,13 @@ ticketsRouter.post("/", auth, bookingLimit, async (req, res) => {
   ]);
   if ((d.room && !room) || !pack)
     fail(400, "Phòng hoặc gói chụp không còn hoạt động.");
-  // Mã chụp chỉ cho phòng photobooth (in DNP); layout Polaroid (khổ Instax) khách chọn ở máy phòng
-  // Polaroid và trả tiền ở quầy, không dùng mã.
-  if (pack.printSize === "instax")
-    fail(400, "Layout Polaroid không bán bằng mã chụp — khách chọn layout ở máy phòng Polaroid và trả tiền ở quầy.");
+  const terms = captureTerms(pack);
   if (room) requireBranch(req, room.branch);
   const branch = room?.branch || d.branch || assigned;
   if (!branch) fail(400, "Vui lòng chọn chi nhánh trước khi tạo mã.");
   requireBranch(req, branch);
   if (room && d.branch && d.branch !== room.branch) fail(400, "Phòng không thuộc chi nhánh đã chọn.");
-  await requireCounterRoom(branch, room);
+  await requireCounterRoom(branch, room, pack);
   // Bảng giá riêng: gói chỉ bán ở các chi nhánh đã chọn (để trống = mọi chi nhánh).
   if (pack.branches?.length && !pack.branches.includes(branch))
     fail(400, `Gói “${pack.name}” không áp dụng tại chi nhánh ${branch}.`);
@@ -253,12 +260,8 @@ ticketsRouter.post("/", auth, bookingLimit, async (req, res) => {
         roomName: room?.name || "",
         branch,
         packageName: pack.name,
-        captureDuration: pack.duration,
-        shots: pack.shots,
+        ...terms,
         countdownSeconds: pack.countdownSeconds || 10,
-      selectCount: pack.selectCount || 4,
-        printSize: pack.printSize || "full",
-        prints: pack.prints,
         total: pack.price,
         discount: 0,
       });

@@ -645,22 +645,49 @@ test("the shop edits the kiosk's on-screen texts; blank lines fall back to the k
   await admin.put("/api/admin/settings/kiosk-texts").send({ kioskTexts: {} }).expect(200);
 });
 
-test("a counter code never sells a Polaroid layout (Instax): photobooth codes print on the DNP only", async () => {
-  const layout = await Package.create({
-    name: "Polaroid 4 ảnh", price: 110000, duration: 10, prints: 2, shots: 10, selectCount: 4, printSize: "instax", active: true,
-  });
+test("the counter sells Polaroid layouts as codes; a code opens only in its kind of room and is not used up elsewhere", async () => {
+  const small = await Package.create({ name: "Ảnh nhỏ", price: 100000, duration: 10, prints: 1, selectCount: 1, printSize: "instax", active: true });
+  const legacy = await Package.create({ name: "Polaroid 4 ảnh", price: 110000, duration: 10, prints: 2, selectCount: 4, printSize: "instax", active: true });
+  const polaroidRoom = await Room.create({ name: "Polaroid 1", branch: "Bắc Giang", kind: "polaroid", active: true });
+  const sell = (body, as = staff) => as.post("/api/admin/tickets").send({ name: "", phone: "", room: "", branch: "Bắc Giang",
+    requestKey: randomUUID(), paymentMethod: "cash", paymentReceived: true, ...body });
+  const claim = (code, kioskRoom) => request(app).post("/api/kiosk/claim")
+    .send({ code, device: jwt.sign({ type: "kiosk", room: String(kioskRoom._id), jti: randomUUID() }, config.secret) });
   try {
-    const refused = await staff.post("/api/admin/tickets").send({
-      name: "Khách", phone: "0388123456", room: "", branch: "Bắc Giang", package: String(layout._id), requestKey: randomUUID(),
-      paymentMethod: "cash", paymentReceived: true,
-    });
-    assert.equal(refused.status, 400, JSON.stringify(refused.body));
-    assert.match(refused.body.message, /Layout Polaroid không bán bằng mã chụp/);
+    // Layout Polaroid: 1 ảnh, 3 phút, bấm dây không giới hạn, in 1 tấm Instax.
+    const code = (await sell({ package: String(small._id) }).expect(201)).body;
+    const booking = await Booking.findById(code._id);
+    assert.deepEqual([booking.printSize, booking.selectCount, booking.captureDuration, booking.prints, booking.shots],
+      ["instax", 1, 3, 1, undefined]);
+    assert.match((await sell({ package: String(legacy._id) }).expect(400)).body.message, /Polaroid chỉ hỗ trợ/);
+    // Phiếu chờ thu tiền (Tạo mã chụp ở quầy) → xác nhận đã thu → mã 6 số, cũng cho layout Polaroid.
+    const draft = (await staff.post("/api/admin/tickets/draft").send({ branch: "Bắc Giang", package: String(small._id),
+      requestKey: randomUUID(), expectedTotal: small.price }).expect(201)).body;
+    const activated = (await staff.patch(`/api/admin/tickets/${draft._id}/activate`)
+      .send({ paymentReceived: true, paymentMethod: "cash", expectedTotal: small.price }).expect(200)).body;
+    assert.match(activated.code, /^\d{6}$/);
+    assert.deepEqual([(await Booking.findById(draft._id)).printSize, (await Booking.findById(draft._id)).captureDuration], ["instax", 3]);
+    assert.match((await sell({ package: String(small._id), room: String(room._id) }).expect(400)).body.message,
+      /Layout Polaroid chỉ dùng ở phòng Polaroid/);
+    assert.match((await sell({ package: String(small._id), branch: "Hà Nội" }, admin).expect(400)).body.message, /chưa có phòng Polaroid/);
+    assert.match((await sell({ package: String(pack._id), room: String(polaroidRoom._id) }).expect(400)).body.message,
+      /Phòng Polaroid chỉ nhận mã của layout Polaroid/);
+
+    // Nhầm phòng: báo rõ, mã vẫn còn; đúng phòng Polaroid thì mở lượt chụp Instax.
+    assert.match((await claim(code.code, room).expect(400)).body.message, /dành cho phòng Polaroid/);
+    assert.equal((await Booking.findById(code._id)).status, "confirmed", "the code is not used up in the wrong room");
+    const opened = (await claim(code.code, polaroidRoom).expect(200)).body;
+    assert.equal(opened.booking.printSize, "instax");
+    assert.equal(String(opened.booking.room), String(polaroidRoom._id));
+    const booth = (await sell({ package: String(pack._id) }).expect(201)).body;
+    assert.match((await claim(booth.code, polaroidRoom).expect(400)).body.message, /dành cho phòng Photobooth/);
+    assert.equal((await Booking.findById(booth._id)).status, "confirmed");
   } finally {
-    await Package.deleteOne({ _id: layout._id });
+    await Package.deleteMany({ _id: { $in: [small._id, legacy._id] } });
+    await Room.deleteOne({ _id: polaroidRoom._id });
+    await Booking.deleteMany({});
   }
 });
-
 test("a room is deleted for good only after it was stopped; staff cannot delete rooms", async () => {
   const spare = await Room.create({ name: "Phòng thừa", branch: "Bắc Giang", active: true });
   try {

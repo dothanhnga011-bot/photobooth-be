@@ -311,11 +311,13 @@ kioskRouter.post("/claim", sensitive(), async (req, res) => {
     res.set("Retry-After", String(seconds));
     fail(429, `Nhập sai 5 lần. Vui lòng chờ ${Math.ceil(seconds / 60)} phút rồi thử lại.`);
   }
+  const polaroidRoom = room.kind === "polaroid";
   const validCode = {
     code: d.code,
     paid: true,
     status: "confirmed",
     branch: room.branch,
+    printSize: polaroidRoom ? "instax" : { $ne: "instax" },
     $or: [
       { codeExpiresAt: { $gt: new Date() } },
       { codeExpiresAt: { $exists: false }, createdAt: { $gt: new Date(Date.now() - 2 * 60 * 60 * 1000) } },
@@ -335,7 +337,7 @@ kioskRouter.post("/claim", sensitive(), async (req, res) => {
     { new: true },
   ).select("+accessToken");
   if (!b) {
-    const other = await Booking.findOne({ code: d.code, paid: true }).select("status branch codeExpiresAt createdAt");
+    const other = await Booking.findOne({ code: d.code, paid: true }).select("status branch codeExpiresAt createdAt printSize");
     if (other && ["checked_in", "completed"].includes(other.status))
       fail(409, "Mã chụp đã được sử dụng. Nhờ nhân viên mở lại đường dẫn ảnh nếu cần.");
     const failed = await registerInvalidCode(deviceKey);
@@ -346,6 +348,10 @@ kioskRouter.post("/claim", sensitive(), async (req, res) => {
     const expiresAt = other?.codeExpiresAt || (other?.createdAt && new Date(other.createdAt.getTime() + 2 * 60 * 60 * 1000));
     if (other?.status === "confirmed" && expiresAt > new Date() && other.branch !== room.branch)
       fail(400, `Mã chụp thuộc chi nhánh “${other.branch}”, nhưng máy này ở chi nhánh “${room.branch}”. Nhờ nhân viên kiểm tra chi nhánh khi cấp mã.`);
+    if (other?.status === "confirmed" && expiresAt > new Date() && (other.printSize === "instax") !== polaroidRoom)
+      fail(400, polaroidRoom
+        ? "Mã này dành cho phòng Photobooth. Mời bạn sang phòng Photobooth để chụp, hoặc nhờ nhân viên đổi mã."
+        : "Mã này dành cho phòng Polaroid. Mời bạn sang phòng Polaroid để chụp, hoặc nhờ nhân viên đổi mã.");
     fail(
       400,
       "Mã chụp không đúng, chưa thanh toán hoặc đã hết hạn 2 giờ.",
