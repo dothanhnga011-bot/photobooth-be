@@ -42,15 +42,15 @@ export const STAFF_PERMISSIONS = [
   "orders:export",
   "orders:cancel",
   "print:operate",
-  "shift:operate",
   "rooms:setup",
 ];
 export const DEFAULT_STAFF_PERMISSIONS = [
   "orders:export",
   "print:operate",
-  "shift:operate",
   "rooms:setup",
 ];
+// Quyền đã bỏ cùng tính năng (Ca trực & Đối soát): tài khoản cũ còn lưu thì bỏ qua, không báo lỗi khi lưu lại.
+export const RETIRED_PERMISSIONS = ["shift:operate"];
 export const permissionsOf = (user) =>
   user?.role === "admin"
     ? STAFF_PERMISSIONS

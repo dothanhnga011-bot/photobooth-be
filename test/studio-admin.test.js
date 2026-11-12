@@ -9,7 +9,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { app } from "../src/app.js";
 import { config } from "../src/config.js";
-import { Booking, Frame, Package, Room, Screen, Setting, Shift, User } from "../src/models/index.js";
+import { Booking, Frame, Package, Room, Screen, Setting, User } from "../src/models/index.js";
 import { addDays, previousRange } from "../src/services/stats.js";
 import { today } from "../src/routes/validation.js";
 
@@ -49,7 +49,7 @@ after(async () => {
 
 test("staff permissions default to the old receptionist rights and can be widened per account", async () => {
   const me = (await staff.get("/api/auth/me").expect(200)).body;
-  assert.deepEqual(me.permissions, ["orders:export", "print:operate", "shift:operate", "rooms:setup"]);
+  assert.deepEqual(me.permissions, ["orders:export", "print:operate", "rooms:setup"]);
   assert.equal((await admin.get("/api/auth/me").expect(200)).body.permissions.includes("revenue:view"), true);
   await staff.get("/api/admin/stats/chart").expect(403);
   const summary = (await staff.get("/api/admin/stats/summary").expect(200)).body;
@@ -72,9 +72,8 @@ test("staff permissions default to the old receptionist rights and can be widene
   assert.deepEqual((await staff.get("/api/auth/me").expect(200)).body.permissions, ["revenue:view", "orders:cancel"]);
   await staff.get("/api/admin/stats/chart").expect(200);
   assert.equal(typeof (await staff.get("/api/admin/stats/summary").expect(200)).body.revenue, "number");
-  // Không còn quyền in / ca trực / cài máy.
+  // Không còn quyền in / cài máy.
   await staff.post(`/api/admin/rooms/${room._id}/device`).expect(403);
-  await staff.post("/api/admin/shifts/open").send({}).expect(403);
   const ticket = await Booking.create({ branch: "Bắc Giang", code: "424242", status: "confirmed", paid: true, total: 1000 });
   await staff.patch(`/api/admin/bookings/${ticket._id}`).send({ status: "cancelled" }).expect(200);
   await User.updateOne({ _id: user._id }, { $unset: { permissions: 1 } });
@@ -121,34 +120,6 @@ test("summary compares with the previous period, splits cash and transfer and ra
     assert.ok(yearly.points.reduce((n, p) => n + p.current.revenue, 0) >= 280000);
   } finally {
     await Booking.deleteMany({});
-  }
-});
-
-test("monthly reconciliation lists closed shifts with their difference and paid money per branch", async () => {
-  const opened = new Date();
-  await Booking.create([
-    { branch: "Bắc Giang", paid: true, paidAt: opened, paymentMethod: "cash", total: 70000, status: "confirmed" },
-    { branch: "Hà Nội", paid: true, paidAt: opened, paymentMethod: "transfer", total: 90000, status: "confirmed" },
-  ]);
-  await Shift.create([
-    { branch: "Bắc Giang", open: false, openedAt: opened, closedAt: opened, openingCash: 500000, closingCash: 560000,
-      summary: { tickets: 1, extraSheets: 0, cash: 70000, transfer: 0, total: 70000 } },
-    { branch: "Hà Nội", open: false, openedAt: opened, closedAt: opened, openingCash: 0, closingCash: 0,
-      summary: { tickets: 1, extraSheets: 0, cash: 0, transfer: 90000, total: 90000 } },
-  ]);
-  try {
-    const month = today().slice(0, 7);
-    const report = (await admin.get(`/api/admin/shifts/report?month=${month}`).expect(200)).body;
-    assert.equal(report.totals.shifts, 2);
-    assert.equal(report.totals.matched, 1);
-    assert.equal(report.totals.difference, -10000);
-    assert.equal(report.totals.total, 160000);
-    assert.deepEqual(report.branches.map((b) => b.branch), ["Bắc Giang", "Hà Nội"]);
-    await staff.get(`/api/admin/shifts/report?month=${month}`).expect(403);
-    await admin.get("/api/admin/shifts/report?month=2026-13").expect(400);
-  } finally {
-    await Booking.deleteMany({});
-    await Shift.deleteMany({});
   }
 });
 
@@ -748,4 +719,26 @@ test("the orders list for a date range leaves out what the booth updates every f
   } finally {
     await Booking.deleteOne({ _id: b._id });
   }
+});
+
+test("the admin sets how long guests have to pick photos; the kiosk reads it from the catalog", async () => {
+  await staff.put("/api/admin/settings/select-time").send({ selectSeconds: 90 }).expect(403);
+  for (const selectSeconds of [29, 901, 90.5, "90", null]) await admin.put("/api/admin/settings/select-time").send({ selectSeconds }).expect(400);
+  await admin.put("/api/admin/settings/select-time").send({ selectSeconds: 90, other: 1 }).expect(400);
+  assert.deepEqual((await admin.put("/api/admin/settings/select-time").send({ selectSeconds: 240 }).expect(200)).body, { selectSeconds: 240 });
+  assert.equal((await request(app).get("/api/catalog").expect(200)).body.settings.selectSeconds, 240);
+});
+
+test("Ca trực & Đối soát are gone; an account still storing the old shift permission can be saved", async () => {
+  await admin.get("/api/admin/shifts").expect(404);
+  await admin.post("/api/admin/shifts/open").send({ branch: "Bắc Giang" }).expect(404);
+  const user = await User.create({ name: "Ca cũ", email: `shift-${randomUUID()}@test.local`, role: "staff", branch: "Bắc Giang",
+    active: true, permissions: ["orders:export", "shift:operate"] });
+  const saved = await admin.put(`/api/admin/users/${user._id}`).send({
+    name: "Ca cũ", email: user.email, role: "staff", branch: "Bắc Giang", active: true, permissions: ["orders:export", "shift:operate"],
+  }).expect(200);
+  assert.deepEqual(saved.body.permissions, ["orders:export"]);
+  await admin.put(`/api/admin/users/${user._id}`).send({
+    name: "Ca cũ", email: user.email, role: "staff", branch: "Bắc Giang", active: true, permissions: ["orders:export", "made:up"],
+  }).expect(400);
 });

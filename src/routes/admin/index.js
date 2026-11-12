@@ -14,7 +14,6 @@ import { statsRouter } from "./stats.js";
 import { settingsRouter } from "./settings.js";
 import { resourcesRouter } from "./resources.js";
 import { storageRouter } from "./storage.js";
-import { shiftsRouter } from "./shifts.js";
 import { studioRouter } from "./studio.js";
 
 export const adminRouter = Router();
@@ -30,7 +29,6 @@ adminRouter.use(bookingsRouter);
 adminRouter.use(bookingPrintsRouter);
 adminRouter.use("/stats", statsRouter);
 adminRouter.use("/storage", storageRouter);
-adminRouter.use("/shifts", shiftsRouter);
 
 // Cài máy chụp: cấp liên kết + QR mở máy chụp của phòng. Loại phòng (Photobooth / Polaroid) chọn lúc
 // quản trị thêm phòng và không đổi ở đây; phòng Photobooth bật / tắt chế độ thử đút tiền (paymentTest)

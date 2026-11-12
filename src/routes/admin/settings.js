@@ -115,6 +115,18 @@ settingsRouter.put("/custom-filters", admin, async (req, res) => {
   res.json(saved.value);
 });
 
+// Thời gian khách chọn ảnh & trang trí ở máy chụp sau khi chụp xong (giây). Máy chụp đọc ở danh mục
+// (settings.selectSeconds); chưa đặt thì 150 giây.
+settingsRouter.put("/select-time", admin, async (req, res) => {
+  const { selectSeconds } = z.object({ selectSeconds: z.number().int().min(30).max(900) }).strict().parse(req.body);
+  const saved = await Setting.findOneAndUpdate(
+    { key: "studio" },
+    { $set: { "value.selectSeconds": selectSeconds } },
+    { upsert: true, new: true },
+  );
+  res.json({ selectSeconds: saved.value.selectSeconds });
+});
+
 // Chữ trên màn hình máy chụp (Thiết lập → Chữ trên máy chụp): mỗi khóa là một dòng chữ; để trống
 // là dùng chữ mặc định của máy chụp.
 settingsRouter.put("/kiosk-texts", admin, async (req, res) => {

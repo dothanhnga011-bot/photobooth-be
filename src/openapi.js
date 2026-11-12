@@ -424,7 +424,7 @@ export const openapi = {
           permissions: {
             type: "array",
             description: "Quyền của nhân viên; bỏ trống để giữ quyền đang có.",
-            items: enumOf(["revenue:view", "orders:export", "orders:cancel", "print:operate", "shift:operate", "rooms:setup"]),
+            items: enumOf(["revenue:view", "orders:export", "orders:cancel", "print:operate", "rooms:setup"]),
           },
           active: { type: "boolean", example: true },
         },
@@ -1719,6 +1719,14 @@ export const openapi = {
         responses: { ...ok("{ id, status: queued, at, message }"), ...errors(401, 403, 404, 409) },
       },
     },
+    "/api/admin/settings/select-time": {
+      put: {
+        tags: ["Thiết lập"], summary: "Thời gian khách chọn ảnh & trang trí ở máy chụp", description: adminOnly +
+          " Máy chụp đọc settings.selectSeconds trong /api/catalog; chưa đặt thì 150 giây. Áp dụng cho lượt chụp xong sau khi lưu.",
+        requestBody: body({ selectSeconds: int("Số giây (30–900)") }, ["selectSeconds"]),
+        responses: { ...ok("{ selectSeconds }"), ...errors(400, 401, 403) },
+      },
+    },
     "/api/admin/settings/kiosk": {
       put: {
         tags: ["Danh mục & cài đặt"],
@@ -1731,56 +1739,6 @@ export const openapi = {
           idleImage: str("Ảnh nền PNG/JPG/WebP dạng data URL, \"\" để bỏ ảnh"),
         }, []),
         responses: { ...ok("Đã lưu", ref("Settings")), ...errors(400, 401, 403) },
-      },
-    },
-    "/api/admin/shifts": {
-      get: {
-        tags: ["Quầy & vé"],
-        summary: "Ca trực đang mở và 20 ca gần nhất",
-        description: "Lễ tân xem chi nhánh được phân công; quản trị chọn ?branch=.",
-        security: loggedIn,
-        parameters: [query("branch", "Chi nhánh (chỉ quản trị)", { type: "string" })],
-        responses: { ...ok("Ca trực"), ...errors(401, 403) },
-      },
-    },
-    "/api/admin/shifts/open": {
-      post: {
-        tags: ["Quầy & vé"],
-        summary: "Mở ca",
-        description: "Mỗi chi nhánh chỉ một ca đang mở (409 nếu đã có).",
-        security: loggedIn,
-        requestBody: body({
-          branch: str("Chi nhánh (quản trị bắt buộc chọn; lễ tân bỏ qua)"),
-          openingCash: int("Tiền mặt đầu ca (VND)"),
-        }, []),
-        responses: { ...ok("Đã mở ca", { type: "object" }, 201), ...errors(400, 401, 403, 404, 409) },
-      },
-    },
-    "/api/admin/shifts/{id}/close": {
-      post: {
-        tags: ["Quầy & vé"],
-        summary: "Đóng ca",
-        description: "Chốt số vé, tiền mặt và chuyển khoản đã thu trong ca.",
-        security: loggedIn,
-        parameters: [pathParam("id", "Mã ca trực")],
-        requestBody: body({
-          closingCash: int("Tiền mặt đếm được cuối ca (VND)"),
-          note: str("Ghi chú"),
-        }, ["closingCash"]),
-        responses: { ...ok("Đã đóng ca"), ...errors(400, 401, 403, 404) },
-      },
-    },
-    "/api/admin/shifts/report": {
-      get: {
-        tags: ["Quầy & vé"],
-        summary: "Đối soát theo tháng: các ca đã đóng và tiền đã thu từng chi nhánh",
-        description: "Cần quyền xem doanh thu (quản trị hoặc nhân viên được cấp revenue:view, chỉ chi nhánh của mình).",
-        security: loggedIn,
-        parameters: [
-          query("month", "Tháng (mặc định tháng này)", month),
-          query("branch", "Chi nhánh (chỉ quản trị)", { type: "string" }),
-        ],
-        responses: { ...ok("Bảng đối soát"), ...errors(400, 401, 403) },
       },
     },
     "/api/admin/stats/summary": {

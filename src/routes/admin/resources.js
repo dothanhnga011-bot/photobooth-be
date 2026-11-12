@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { User, Room, Package, Frame, Sticker } from "../../models/index.js";
-import { admin, isAdmin, staffBranch, STAFF_PERMISSIONS } from "../../middleware/auth.js";
+import { admin, isAdmin, RETIRED_PERMISSIONS, staffBranch, STAFF_PERMISSIONS } from "../../middleware/auth.js";
 import { fail, id, text, priceVND } from "../validation.js";
 import { leastSheets } from "../print-count.js";
 import { polaroidDuration, polaroidPackage } from "../../polaroid-layouts.js";
@@ -183,9 +183,8 @@ const resources = {
       role: z.enum(["admin", "staff"]),
       branch: z.string().trim().max(200).default(""),
       permissions: z
-        .array(z.enum(STAFF_PERMISSIONS))
-        .max(STAFF_PERMISSIONS.length)
-        .optional()
+        .preprocess((items) => (Array.isArray(items) ? items.filter((p) => !RETIRED_PERMISSIONS.includes(p)) : items),
+          z.array(z.enum(STAFF_PERMISSIONS)).max(STAFF_PERMISSIONS.length).optional())
         .transform((items) => items && [...new Set(items)]),
       active,
     }).refine((user) => user.role !== "staff" || Boolean(user.branch), {

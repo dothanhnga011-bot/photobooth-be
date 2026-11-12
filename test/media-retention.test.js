@@ -14,7 +14,6 @@ import { getStorageSummary } from "../src/services/media-storage.js";
 import { visibleBookingHistory } from "../src/services/booking-history.js";
 import { archiveBookingRevenue, financialAggregate, rejectArchivedSale } from "../src/services/revenue-ledger.js";
 import { expiredBookingHistory } from "../src/services/booking-history.js";
-import { shiftSummary } from "../src/routes/admin/shifts.js";
 
 let memory;
 const hour = 3_600_000;
@@ -63,8 +62,7 @@ test("72-hour retention deletes every media variant and customer data while all 
   const reports = async () => {
     statsCache.clear();
     return Promise.all([getSummary({ from: b.date, to: b.date }), getMonthRevenue(b.date.slice(0, 7)),
-      getRevenueSeries({ from: b.date, to: b.date }),
-      shiftSummary(b.branch, new Date(now - MEDIA_TTL_MS - 2 * hour), new Date(now))]);
+      getRevenueSeries({ from: b.date, to: b.date })]);
   };
   const beforeReports = await reports();
   assert.equal(beforeReports[0].revenue, 90000);
