@@ -783,6 +783,34 @@ test("the orders list for a date range leaves out what the booth updates every f
   }
 });
 
+test("the Đơn hàng badge counts today's unconfirmed counter tickets and unpaid Polaroid turns, per branch", async () => {
+  const count = async (agent) => (await agent.get("/api/admin/bookings/awaiting-payment").expect(200)).body.count;
+  const [adminBefore, staffBefore] = [await count(admin), await count(staff)];
+  const day = today();
+  const yesterday = new Date(Date.now() - 86400000).toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
+  const made = await Booking.create([
+    // Đếm: phiếu quầy hôm nay chưa xác nhận thu (Bắc Giang), lượt Polaroid cũ chưa thu (Hà Nội).
+    { source: "counter", status: "pending", paid: false, branch: "Bắc Giang", date: day, total: 100000 },
+    { source: "polaroid", status: "completed", paid: false, branch: "Hà Nội", date: day, total: 120000 },
+    // Không đếm: phiếu bỏ dở hôm qua, phiếu đã thu, lượt Polaroid đã thu, đơn đã hủy.
+    { source: "counter", status: "pending", paid: false, branch: "Bắc Giang", date: yesterday, total: 100000 },
+    { source: "counter", status: "confirmed", paid: true, branch: "Bắc Giang", date: day, total: 100000 },
+    { source: "polaroid", status: "completed", paid: true, branch: "Bắc Giang", date: day, total: 120000 },
+    { source: "counter", status: "cancelled", paid: false, branch: "Bắc Giang", date: day, total: 100000 },
+  ]);
+  try {
+    assert.equal(await count(admin), adminBefore + 2);
+    // Lễ tân Bắc Giang chỉ thấy phiếu của chi nhánh mình.
+    assert.equal(await count(staff), staffBefore + 1);
+    // Bấm "Đã thu tiền" cho lượt Polaroid: số giảm ngay.
+    await admin.patch(`/api/admin/bookings/${made[1]._id}`).send({ collected: "cash" }).expect(200);
+    assert.equal(await count(admin), adminBefore + 1);
+  } finally {
+    await Booking.deleteMany({ _id: { $in: made.map((b) => b._id) } });
+  }
+  await request(app).get("/api/admin/bookings/awaiting-payment").expect(401);
+});
+
 test("the admin sets how long guests have to pick photos; the kiosk reads it from the catalog", async () => {
   await staff.put("/api/admin/settings/select-time").send({ selectSeconds: 90 }).expect(403);
   for (const selectSeconds of [29, 901, 90.5, "90", null]) await admin.put("/api/admin/settings/select-time").send({ selectSeconds }).expect(400);

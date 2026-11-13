@@ -4,7 +4,7 @@ import { Booking, PrintJob, Room, Setting } from "../../models/index.js";
 import { allow, can, hideMoney, requireBranch, staffBranch } from "../../middleware/auth.js";
 import { livePrintFilter, photoExpiry, MEDIA_TTL_MS } from "../../services/media.js";
 import { visibleBookingHistory } from "../../services/booking-history.js";
-import { fail, id, date } from "../validation.js";
+import { fail, id, date, today } from "../validation.js";
 import { KIOSK_LIVE_MS } from "../kiosk-session.js";
 import { publicJob } from "../print-helpers.js";
 import { extraPriceFor } from "../print-count.js";
@@ -14,6 +14,25 @@ export const bookingsRouter = Router();
 export const BOOKING_RANGE_LIMIT = 2000;
 const LIST_OMIT = "-photos -cashBills -extraSales -captureSeenAt -captureStartedAt -captureEndsAt " +
   "-nextPhotoNumber -codeExpiresAt -updatedAt";
+
+// Số đơn chờ thu tiền, hiện cạnh mục "Đơn hàng" trên thanh bên quản trị:
+// - phiếu quầy tạo hôm nay mà nhân viên chưa bấm "Xác nhận đã thu" (phiếu bỏ dở từ hôm trước không tính
+//   nữa, để con số không treo mãi);
+// - lượt Polaroid cũ (khách chọn layout ở máy, trả ở quầy) chưa bấm "Đã thu tiền".
+// Lễ tân chỉ đếm đơn của chi nhánh được phân công.
+bookingsRouter.get("/bookings/awaiting-payment", async (req, res) => {
+  const assigned = staffBranch(req);
+  const count = await Booking.countDocuments({
+    ...visibleBookingHistory(new Date(), MEDIA_TTL_MS),
+    ...(assigned && { branch: assigned }),
+    paid: false,
+    $or: [
+      { source: "counter", status: "pending", date: today() },
+      { source: "polaroid", status: { $in: ["checked_in", "completed"] } },
+    ],
+  });
+  res.json({ count });
+});
 
 bookingsRouter.get("/bookings", async (req, res) => {
   const q = visibleBookingHistory(new Date(), MEDIA_TTL_MS);
