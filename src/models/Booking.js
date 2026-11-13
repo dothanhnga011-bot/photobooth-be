@@ -39,6 +39,9 @@ const bookingSchema = new Schema(
     captureSession: { type: String, select: false },
     captureStartedAt: Date,
     captureEndsAt: Date,
+    // Phòng Selfbooth (Polaroid): hạn khách chọn ảnh, làm đẹp, ghép khung trên điện thoại sau khi quét QR,
+    // đặt lần đầu khách mở album (POST /albums/:token/edit-start).
+    editEndsAt: Date,
     // folder: ảnh gốc máy ảnh (X Acquire) do máy chụp đọc từ thư mục — cách chụp duy nhất hiện nay.
     // camera / tether: chế độ cũ đã bỏ (chỉ còn trong vé cũ).
     captureMode: { type: String, enum: ["camera", "folder", "tether"] },

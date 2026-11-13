@@ -1462,6 +1462,16 @@ export const openapi = {
         },
       },
     },
+    "/api/albums/{token}/edit-start": {
+      post: {
+        tags: ["Album khách"], summary: "Bắt đầu tính giờ chọn & chỉnh ảnh trên điện thoại (phòng Selfbooth)",
+        description: "Chỉ cho album khổ Instax đã chụp xong. Lần gọi đầu đặt editEndsAt = bây giờ + settings.selectSeconds (mặc định 250 giây); các lần sau trả lại cùng hạn. serverTime để điện thoại bù đồng hồ.",
+        responses: {
+          ...ok("Hạn chỉnh ảnh", object({ editEndsAt: { type: "string", format: "date-time" }, serverTime: int("Giờ máy chủ (ms)") })),
+          ...errors(404, 409),
+        },
+      },
+    },
     "/api/albums/{token}/print-archive": {
       post: {
         tags: ["Album khách"], summary: "Lưu file kiosk đã in trực tiếp, không phát lệnh in",
@@ -1726,7 +1736,7 @@ export const openapi = {
     "/api/admin/settings/select-time": {
       put: {
         tags: ["Thiết lập"], summary: "Thời gian khách chọn ảnh & trang trí ở máy chụp", description: adminOnly +
-          " Máy chụp đọc settings.selectSeconds trong /api/catalog; chưa đặt thì 150 giây. Áp dụng cho lượt chụp xong sau khi lưu.",
+          " Máy chụp (phòng PTB) và điện thoại khách (phòng Selfbooth) đọc settings.selectSeconds; chưa đặt thì 250 giây. Áp dụng cho lượt chụp xong sau khi lưu.",
         requestBody: body({ selectSeconds: int("Số giây (30–900)") }, ["selectSeconds"]),
         responses: { ...ok("{ selectSeconds }"), ...errors(400, 401, 403) },
       },

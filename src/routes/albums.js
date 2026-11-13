@@ -3,7 +3,8 @@ import mongoose from "mongoose";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { mediaReference } from "../services/r2.js";
-import { Booking, PrintJob } from "../models/index.js";
+import { Booking, PrintJob, Setting } from "../models/index.js";
+import { selectSecondsOf } from "../services/select-time.js";
 import { appendCapture, attachOriginal } from "../services/capture.js";
 import { timed } from "../services/image-save-queue.js";
 import {
@@ -336,6 +337,23 @@ export async function submitPrintPack(req, res) {
   }
 }
 albumsRouter.post("/:token/print-pack", printLimit, printBody, submitPrintPack);
+// Phòng Selfbooth (Polaroid, khổ Instax): hết giờ chụp, máy chụp hiện QR; khách quét rồi thả tim, làm đẹp, ghép
+// khung và gửi in trên điện thoại trong thời gian chọn ảnh của tiệm. Máy chủ tính giờ từ lần mở đầu tiên —
+// tải lại trang hay mở trên máy khác vẫn cùng một hạn. serverTime: điện thoại bù đồng hồ lệch.
+albumsRouter.post("/:token/edit-start", async (req, res) => {
+  const b = await album(req, "status printSize editEndsAt");
+  if (b.printSize !== "instax") fail(409, "Album này không chọn ảnh trên điện thoại.");
+  if (b.status !== "completed") fail(409, "Buổi chụp chưa kết thúc. Vui lòng đợi máy chụp gửi xong ảnh.");
+  let endsAt = b.editEndsAt;
+  if (!endsAt) {
+    const studio = await Setting.findOne({ key: "studio" }).select("value.selectSeconds").lean();
+    const next = new Date(Date.now() + selectSecondsOf(studio?.value?.selectSeconds) * 1000);
+    // Hai lần mở cùng lúc: lần nào đặt trước thì giữ.
+    await Booking.updateOne({ _id: b._id, editEndsAt: null }, { $set: { editEndsAt: next } });
+    endsAt = (await Booking.findById(b._id).select("editEndsAt").lean()).editEndsAt;
+  }
+  res.json({ editEndsAt: endsAt, serverTime: Date.now() });
+});
 // Archive only AFTER the local printer acknowledges the bytes. This route can never dispatch paper.
 albumsRouter.post("/:token/print-archive", printLimit, printBody, (req, res) => {
   req.archivePrint = true;
