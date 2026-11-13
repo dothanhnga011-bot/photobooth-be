@@ -404,7 +404,8 @@ try {
   await kiosk
     .getByRole("textbox", { name: "Mã chụp", exact: true })
     .fill(booking.code);
-  // Đủ 6 số là máy chụp tự kiểm tra mã và vào chụp, không cần bấm "Bắt đầu chụp".
+  // Nhập đủ 6 số rồi bấm "Bắt đầu chụp" mới vào chụp (máy chụp không tự gửi mã).
+  await kiosk.getByRole("button", { name: "Bắt đầu chụp" }).click();
   // Khách chụp bằng dây bấm của máy ảnh (không có nút chụp trên màn hình).
   await kiosk.locator(".shoot-screen.phase-shoot").waitFor({ timeout: 20000 });
   assert.equal(
