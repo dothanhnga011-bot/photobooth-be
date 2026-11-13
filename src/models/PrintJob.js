@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { clearOnWrite, statsCache } from "../services/read-cache.js";
 
 const { Schema } = mongoose;
 // Lệnh in khách gửi từ Web App: file khung đã ghép (độ phân giải cao) chờ lễ tân in.
@@ -48,4 +49,5 @@ printJobSchema.index({ room: 1, status: 1, spoolStatus: 1, createdAt: 1 });
 printJobSchema.index({ branch: 1, status: 1, createdAt: 1 });
 printJobSchema.index({ branch: 1, status: 1, createdAt: -1 });
 
+clearOnWrite(statsCache, printJobSchema, { paths: ['status', 'branch'] });
 export default mongoose.model("PrintJob", printJobSchema, "print_jobs");

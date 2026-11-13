@@ -9,7 +9,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { app } from "../src/app.js";
 import { config } from "../src/config.js";
-import { Booking, Frame, Package, Room, Screen, Setting, User } from "../src/models/index.js";
+import { Booking, Frame, Package, PrintJob, Room, Screen, Setting, User } from "../src/models/index.js";
 import { addDays, previousRange } from "../src/services/stats.js";
 import { today } from "../src/routes/validation.js";
 
@@ -120,6 +120,30 @@ test("summary compares with the previous period, splits cash and transfer and ra
     assert.ok(yearly.points.reduce((n, p) => n + p.current.revenue, 0) >= 280000);
   } finally {
     await Booking.deleteMany({});
+  }
+});
+
+test('sales and print queue counts refresh immediately after writes, even with a cached dashboard', async () => {
+  const day = today();
+  const summary = async () => (await admin.get(`/api/admin/stats/summary?from=${day}&to=${day}`).expect(200)).body;
+  const dashboard = async () => (await admin.get('/api/admin/stats').expect(200)).body;
+  const booking = await Booking.create({ room: room._id, branch: room.branch, date: day, paid: true, total: 60000 });
+  let job;
+  try {
+    assert.equal((await summary()).revenue, 60000);
+    booking.total = 90000;
+    await booking.save();
+    assert.equal((await summary()).revenue, 90000, 'document saves invalidate the previous total');
+    await Booking.updateOne({ _id: booking._id }, { $inc: { total: 30000 } });
+    assert.equal((await summary()).revenue, 120000, 'query updates invalidate the previous total');
+    assert.equal((await dashboard()).printQueue, 0);
+    job = await PrintJob.create({ booking: booking._id, branch: room.branch, status: 'pending' });
+    assert.equal((await dashboard()).printQueue, 1);
+    await PrintJob.findByIdAndUpdate(job._id, { $set: { status: 'printed' } });
+    assert.equal((await dashboard()).printQueue, 0, 'completed print leaves the cached queue immediately');
+  } finally {
+    if (job) await PrintJob.deleteOne({ _id: job._id });
+    await Booking.deleteOne({ _id: booking._id });
   }
 });
 

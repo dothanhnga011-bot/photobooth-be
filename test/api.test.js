@@ -20,6 +20,7 @@ import {
   Room,
   Package,
   Booking,
+  RevenueEntry,
   PrintJob,
   Frame,
   KioskAttempt,
@@ -1170,8 +1171,11 @@ test("self-booth: timed session, numbered photos, idempotent uploads, timeout an
     (await purgeExpiredMedia(new Date(Date.now() + MEDIA_TTL_MS + 1000))) >= 1,
   );
   const purged = await Booking.findById(b._id);
-  assert.equal(purged.photos.length, 0);
-  assert.equal(purged.mediaDeleted, true);
+  assert.equal(purged, null, 'expired sessions are removed after their revenue is archived');
+  const revenue = await RevenueEntry.findById(b._id).lean();
+  assert.ok(revenue, 'the sale remains in the financial ledger');
+  assert.equal(revenue.total, stored.total);
+  assert.equal(revenue.accessToken, undefined);
   await request(app)
     .get(`/api/albums/${session.accessToken}/photos/${stored.photos[0]._id}`)
     .expect(404);
@@ -1974,7 +1978,9 @@ test("tickets use the package price and reject stale totals", async () => {
 });
 
 test("aggregated dashboard matches totals, paid revenue and room occupancy", async () => {
-  const existing = await Booking.find().lean();
+  const live = await Booking.find().lean();
+  const archived = await RevenueEntry.find().lean();
+  const existing = [...new Map([...archived, ...live].map(sale => [String(sale._id), sale])).values()];
   const today = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Ho_Chi_Minh",
   }).format(new Date());

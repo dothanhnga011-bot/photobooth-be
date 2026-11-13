@@ -39,8 +39,34 @@ const WRITES = [
 ];
 // Clear `cache` after any write made through the given schemas (register before compiling the
 // model). A read that started before the write finished is never stored (see get()).
-export function clearOnWrite(cache, schema) {
-  for (const op of WRITES) schema.post(op, () => cache.clear());
+export function clearOnWrite(cache, schema, { paths } = {}) {
+  if (!paths) {
+    for (const op of WRITES) schema.post(op, () => cache.clear());
+    return;
+  }
+  const tracked = new Set(paths);
+  const touches = path => tracked.has(path.split('.')[0]);
+  const changed = new WeakMap();
+  schema.pre('save', function () {
+    changed.set(this, this.isNew || this.modifiedPaths().some(touches));
+  });
+  schema.post('save', function () {
+    if (changed.get(this)) cache.clear();
+    changed.delete(this);
+  });
+  for (const op of WRITES.filter(op => op !== 'save')) schema.post(op, function () {
+    // Deletes/inserts/replacements change the set of rows. Pipelines and bulk
+    // writes are conservatively invalidated. Camera heartbeats and photo-only
+    // updates should not discard a cached financial report.
+    const update = this.getUpdate?.();
+    if (!update || Array.isArray(update) || !op.startsWith('update') && op !== 'findOneAndUpdate') {
+      cache.clear();
+      return;
+    }
+    const affected = Object.entries(update).flatMap(([key, value]) => key.startsWith('$')
+      ? [...Object.keys(value || {}), ...(key === '$rename' ? Object.values(value) : [])] : [key]);
+    if (affected.some(touches)) cache.clear();
+  });
 }
 
 // Catalog: rooms, packages, frames and studio settings. Users: the session check of every admin request.

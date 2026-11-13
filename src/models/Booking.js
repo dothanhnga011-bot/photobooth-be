@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { clearOnWrite, statsCache } from "../services/read-cache.js";
 
 const { Schema } = mongoose;
 const bookingSchema = new Schema(
@@ -123,5 +124,10 @@ bookingSchema.index({ branch: 1, "extraSales.at": 1 });
 // Dọn ảnh hết hạn 15 phút/lần tìm vé có ảnh cũ (ObjectId ảnh mang thời điểm chụp).
 bookingSchema.index({ "photos._id": 1 });
 bookingSchema.index({ customerDataDeletedAt: 1, status: 1, createdAt: 1 });
+
+clearOnWrite(statsCache, bookingSchema, { paths: [
+  'date', 'branch', 'room', 'roomName', 'packageName', 'frameName', 'status', 'paid',
+  'total', 'paymentMethod', 'extraSales', 'printSheets', 'extraPrints',
+] });
 
 export default mongoose.model("Booking", bookingSchema, "bookings");

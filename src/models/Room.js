@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { catalogCache, clearOnWrite } from "../services/read-cache.js";
+import { catalogCache, clearOnWrite, statsCache } from "../services/read-cache.js";
 
 const roomSchema = new mongoose.Schema(
   {
@@ -31,5 +31,6 @@ roomSchema.index({ active: 1, branch: 1 });
 
 // /api/catalog is cached in memory; any change here refreshes it.
 clearOnWrite(catalogCache, roomSchema);
+clearOnWrite(statsCache, roomSchema, { paths: ['name', 'active', 'branch'] });
 
 export default mongoose.model("Room", roomSchema, "rooms");
