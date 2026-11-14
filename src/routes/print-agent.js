@@ -11,6 +11,7 @@ import { printEvents } from "../services/print-events.js";
 import { publicJob } from "./print-helpers.js";
 import { fail, id } from "./validation.js";
 import { printBody } from "./print-upload.js";
+import { PRINT_SIZES } from "../print-sizes.js";
 import { submitPrintPack } from "./albums.js";
 import { getRx1Output, noteRx1Output, noteSharpnessTest, pendingSharpnessTest, rx1AppliedSchema,
   sharpnessTestReportSchema } from "../services/rx1-output.js";
@@ -42,7 +43,6 @@ printAgentRouter.use((req, res, next) => {
 // Lệnh in agent này được thấy: của phòng (mã máy in phòng) hoặc của chi nhánh (mã chung).
 const scopeFilter = (req, branch) => (req.printScope ? { room: req.printScope.room } : { branch });
 
-const PRINT_SIZES = ["full", "strip", "instax"];
 // Configuration/acknowledgement only. This never claims, prints, archives, or charges a sheet.
 // Kèm yêu cầu "In thử độ nét" của phòng (nếu đang chờ) và nhận lại kết quả tờ thử agent đã in.
 printAgentRouter.post("/output-settings/sync", async (req, res) => {
@@ -66,7 +66,8 @@ printAgentRouter.post("/claim", async (req, res) => {
   const body = z.object({
     branch: z.string().trim().min(1).max(200).optional(),
     // Khổ máy in cạnh agent này in được (DNP: full + strip, Instax: instax). Không gửi = mọi khổ.
-    printSizes: z.array(z.enum(PRINT_SIZES)).min(1).max(3).optional(),
+    // DS820 (phòng Selfbooth): large.
+    printSizes: z.array(z.enum(PRINT_SIZES)).min(1).max(4).optional(),
   }).parse(req.body);
   const { printSizes } = body;
   const branch = req.printScope ? req.printScope.branch : body.branch;

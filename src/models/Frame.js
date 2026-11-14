@@ -6,7 +6,7 @@ const frameSchema = new mongoose.Schema(
     name: String,
     themeName: { type: String, default: "" },
     order: { type: Number, default: 0 },
-    printSize: { type: String, enum: ["full", "strip", "instax"], default: "full" },
+    printSize: { type: String, enum: ["full", "strip", "instax", "large"], default: "full" },
     image: String,
     // Ảnh xem nhanh (WebP, cạnh dài 720 px) cho danh sách / bộ chọn chủ đề — khách lướt chọn khung
     // không phải tải ảnh khung gốc (vài MB mỗi khung). Ghép ảnh và in luôn dùng `image`.

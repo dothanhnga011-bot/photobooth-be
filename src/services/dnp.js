@@ -11,7 +11,7 @@ import { getRx1Output } from "./rx1-output.js";
 let queue = Promise.resolve();
 export function dispatchPrint(job) {
   // Instax prints only through the print agent next to the printer (Bluetooth).
-  if (!config.dnpPrinter || process.platform !== "win32" || job.printSize === "instax") return false;
+  if (!config.dnpPrinter || process.platform !== "win32" || job.printSize === "instax" || job.printSize === "large") return false;
   queue = queue
     .catch(() => {})
     .then(async () => {

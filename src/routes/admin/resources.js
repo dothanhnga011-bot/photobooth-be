@@ -7,6 +7,7 @@ import { fail, id, text, priceVND } from "../validation.js";
 import { leastSheets } from "../print-count.js";
 import { polaroidPackage } from "../../polaroid-layouts.js";
 import { moveFrame, withFrameCatalogLock } from "../../services/frame-order.js";
+import { isPolaroidSize, PRINT_SIZES } from "../../print-sizes.js";
 import {
   FRAME_LIST_FIELDS,
   frameListItem,
@@ -80,7 +81,7 @@ const resources = {
       shots: z.number().int().min(0).max(40).default(12),
       countdownSeconds: z.number().int().min(1).max(30).default(10),
       selectCount: z.number().int().min(1).max(12).optional(),
-      printSize: z.enum(["full", "strip", "instax"]).default("full"),
+      printSize: z.enum(PRINT_SIZES).default("full"),
       prints: z.number().int().min(0).max(20).optional(),
       branches: z
         .array(z.string().trim().min(1).max(200))
@@ -91,7 +92,7 @@ const resources = {
     }).superRefine((pack, ctx) => {
       // Gói Polaroid (khổ Instax) như Selfbooth: chụp không giới hạn trong số phút của gói, kèm ít
       // nhất 1 tấm Instax.
-      if (pack.printSize === "instax") {
+      if (isPolaroidSize(pack.printSize)) {
         if (!(pack.prints >= 1))
           ctx.addIssue({ code: "custom", path: ["prints"], message: "gói Polaroid kèm ít nhất 1 tấm Instax" });
         return;
@@ -108,7 +109,7 @@ const resources = {
             : "khổ to kèm ít nhất 2 tờ",
         });
     }).transform((pack) => polaroidPackage({
-      ...pack, selectCount: pack.selectCount ?? (pack.printSize === "instax" ? 1 : 4),
+      ...pack, selectCount: pack.selectCount ?? (isPolaroidSize(pack.printSize) ? 1 : 4),
     })),
   ],
   frames: [
@@ -118,7 +119,7 @@ const resources = {
       name: text,
       themeName: z.string().trim().max(100).default(""),
       order: z.number().int().min(0).max(999).default(0),
-      printSize: z.enum(["full", "strip", "instax"]).default("full"),
+      printSize: z.enum(PRINT_SIZES).default("full"),
       // PNG tối đa 10 MB (≈ 13,4 triệu ký tự base64).
       image: z
         .string({ error: "Vui lòng import ảnh khung." })

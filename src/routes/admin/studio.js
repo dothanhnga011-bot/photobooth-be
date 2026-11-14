@@ -5,6 +5,7 @@ import { admin } from "../../middleware/auth.js";
 import { hashImage, frameThumbUrl } from "../../services/frame-image.js";
 import { withFrameCatalogLock } from "../../services/frame-order.js";
 import { fail, id } from "../validation.js";
+import { isPolaroidSize } from "../../print-sizes.js";
 
 export const studioRouter = Router();
 
@@ -119,7 +120,7 @@ studioRouter.delete("/screens/:id", admin, async (req, res) => {
 const themeName = z.string().trim().min(1, "Vui lòng nhập tên chủ đề.").max(100);
 // Chủ đề thuộc một loại phòng: Photobooth (khung 10 × 15) hoặc Polaroid (khung Instax), chọn lúc thêm.
 const themeKind = z.enum(["photobooth", "polaroid"]);
-const kindOfSize = (printSize) => (printSize === "instax" ? "polaroid" : "photobooth");
+const kindOfSize = (printSize) => (isPolaroidSize(printSize) ? "polaroid" : "photobooth");
 const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const sameName = (name) => new RegExp(`^\\s*${escape(name)}\\s*$`);
 const storedThemes = async () =>

@@ -50,7 +50,7 @@ const bookingSchema = new Schema(
     captureDuration: Number,
     countdownSeconds: Number,
     selectCount: Number,
-    printSize: { type: String, enum: ["full", "strip", "instax"] },
+    printSize: { type: String, enum: ["full", "strip", "instax", "large"] },
     // Máy chụp báo "còn sống" vài giây một lần; máy khác chỉ nhận lại mã khi máy cũ im lặng.
     captureSeenAt: Date,
     // Tình trạng máy chụp gửi kèm khi báo "còn sống" (thư mục ảnh, số ảnh thấy được, lỗi đọc…)

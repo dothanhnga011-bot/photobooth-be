@@ -20,6 +20,10 @@ export async function validatePrintImage(buffer, contentType, printSize = "full"
   if (printSize === "instax") {
     if (!((width === 1260 && height === 840) || (width === 600 && height === 800)))
       throw new Error("Tấm Instax Wide phải là ảnh ngang 1260 × 840 px.");
+  } else if (printSize === "large") {
+    // Tờ 20 × 30 cm máy DNP DS820 (phòng Selfbooth): 8 × 12 inch ở 300 điểm / inch, dọc hoặc ngang.
+    if (!(short === 2400 && long === 3600))
+      throw new Error("Tờ ảnh 20 × 30 phải là 2400 × 3600 px (dọc hoặc ngang).");
   } else if (!((short === 1200 && long === 1800) || (short === 1181 && long === 1772) || (short === 2400 && long === 3600)))
     throw new Error("Tờ ảnh phải là 1200 × 1800 px, 1181 × 1772 px hoặc 2400 × 3600 px (dọc hoặc ngang).");
   // Reading just metadata accepts a valid header with missing/corrupt pixel data.

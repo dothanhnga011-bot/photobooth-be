@@ -528,9 +528,10 @@ test("a room's DNP printer token prints only that room's jobs and reports the pr
   try {
     // Chưa có chương trình in của phòng: lệnh in mới chờ nhân viên in tay.
     assert.equal(await initialSpoolStatus(room._id), "idle");
-    await staff.post(`/api/admin/rooms/${polaroid._id}/printer`).send({}).expect(409);
+    // Phòng Polaroid / Selfbooth cũng có máy in DNP riêng (DS820, tờ 20 × 30).
+    assert.equal((await staff.post(`/api/admin/rooms/${polaroid._id}/printer`).send({}).expect(200)).body.kind, "polaroid");
     const issued = (await staff.post(`/api/admin/rooms/${room._id}/printer`).send({}).expect(200)).body;
-    assert.deepEqual([issued.name, issued.branch], ["Test room", "Test branch"]);
+    assert.deepEqual([issued.name, issued.branch, issued.kind], ["Test room", "Test branch", "photobooth"]);
     const payload = jwt.verify(issued.token, config.secret);
     assert.deepEqual([payload.type, payload.room], ["print-agent", String(room._id)]);
     const auth = { Authorization: `Bearer ${issued.token}` };

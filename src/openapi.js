@@ -296,7 +296,7 @@ export const openapi = {
         codeExpiresAt: str("Mã chụp hết hạn sau hai giờ kể từ paidAt", { format: "date-time" }),
         shots: int("Số ảnh được chụp của gói tại lúc bán"),
         countdownSeconds: int("Trường cũ; kiosk hiện dùng dây bấm, không tự chụp theo đếm ngược"),
-        printSize: enumOf(["full", "strip", "instax"]),
+        printSize: enumOf(["full", "strip", "instax", "large"]),
         name: { type: "string" },
         phone: { type: "string" },
         status: enumOf(
@@ -374,7 +374,7 @@ export const openapi = {
           shots: int("Số lần bấm dây chụp tối đa (1–40); gói Polaroid chụp không giới hạn", { example: 12 }),
           countdownSeconds: int("Trường tương thích kiosk cũ; giao diện hiện tại dùng dây bấm", { example: 10 }),
           selectCount: int("Số ảnh khách chọn để ghép khung trên máy chụp (1–12)", { example: 4 }),
-          printSize: enumOf(["full", "strip", "instax"]),
+          printSize: enumOf(["full", "strip", "instax", "large"]),
           prints: int("Số tờ in kèm gói (0–20); gói Polaroid (instax): số tấm Instax, ít nhất 1", { example: 1 }),
           branches: { type: "array", items: { type: "string" }, description: "Chi nhánh áp dụng; để trống = mọi chi nhánh" },
           active: { type: "boolean", example: true },
@@ -386,7 +386,7 @@ export const openapi = {
           name: { type: "string", example: "Khung sinh nhật" },
           themeName: { type: "string", example: "" },
           order: { type: "integer", example: 0 },
-          printSize: enumOf(["full", "strip", "instax"]),
+          printSize: enumOf(["full", "strip", "instax", "large"]),
           image: str("Ảnh khung PNG/JPG dạng data URL (≤ 3 MB)"),
           slots: {
             type: "array",
@@ -1060,7 +1060,7 @@ export const openapi = {
           "printSizes: khổ máy in cạnh agent in được (full / strip / instax). Mỗi lệnh được cấp một lease 5 phút.",
         requestBody: body({
           branch: str("Chi nhánh đặt máy in (chỉ với PRINT_AGENT_TOKEN)"),
-          printSizes: { type: "array", items: enumOf(["full", "strip", "instax"]) },
+          printSizes: { type: "array", items: enumOf(["full", "strip", "instax", "large"]) },
         }, []),
         responses: { ...ok("Lệnh in hoặc job: null"), ...errors(400, 403) },
       },

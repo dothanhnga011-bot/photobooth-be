@@ -61,18 +61,18 @@ adminRouter.post("/rooms/:id/device", allow("rooms:setup"), async (req, res) => 
     name: room.name,
   });
 });
-// Cài máy in DNP của phòng Photobooth: mã cho chương trình in trên mini PC của phòng (máy cắm DNP).
-// Mã chỉ nhận lệnh in của đúng phòng này (routes/print-agent.js). Phòng Polaroid in Instax qua agent riêng.
+// Cài máy in DNP của một phòng: mã cho chương trình in trên máy tính cắm máy in (phòng Photobooth: DS-RX1
+// trên mini PC của phòng; phòng Polaroid / Selfbooth từ 14/11: DS820 in tờ 20 × 30). Mã chỉ nhận lệnh in
+// của đúng phòng này (routes/print-agent.js).
 adminRouter.post("/rooms/:id/printer", allow("rooms:setup"), async (req, res) => {
   const room = await Room.findById(id.parse(req.params.id));
   if (!room) fail(404, "Không tìm thấy phòng.");
   if (!room.active) fail(409, "Phòng chụp đã ngừng hoạt động.");
   requireBranch(req, room.branch);
-  if ((room.kind || "photobooth") !== "photobooth")
-    fail(409, "Phòng Polaroid in ra máy Instax, không dùng máy in DNP.");
   res.json({
     name: room.name,
     branch: room.branch,
+    kind: room.kind || "photobooth",
     token: jwt.sign(
       { type: "print-agent", room: String(room._id), branch: room.branch, jti: crypto.randomUUID() },
       config.secret,

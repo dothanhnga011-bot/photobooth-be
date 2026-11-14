@@ -8,6 +8,7 @@ import { bookingLimit } from "../../middleware/rate-limits.js";
 import { fail, id, phone, token, today } from "../validation.js";
 import { publicBooking } from "../booking-helpers.js";
 import { INSTAX_SHEETS } from "../print-count.js";
+import { isPolaroidSize } from "../../print-sizes.js";
 
 export const ticketsRouter = Router();
 const CODE_LIFETIME_MS = 2 * 60 * 60 * 1000;
@@ -15,7 +16,7 @@ const CODE_LIFETIME_MS = 2 * 60 * 60 * 1000;
 // Mã chụp của gói photobooth (in DNP) chỉ nhập ở phòng photobooth; mã của gói Polaroid (khổ Instax)
 // chỉ nhập ở phòng Polaroid. Không cấp mã ở chi nhánh không có phòng đúng loại để nhập.
 async function requireCounterRoom(branch, room, pack) {
-  const polaroid = pack.printSize === "instax";
+  const polaroid = isPolaroidSize(pack.printSize);
   const kind = polaroid ? "Polaroid" : "photobooth";
   // Older rooms without a kind are photobooths.
   if (room && (room.kind === "polaroid") !== polaroid)
@@ -26,11 +27,11 @@ async function requireCounterRoom(branch, room, pack) {
 // Lượt chụp theo gói. Gói Polaroid (như Selfbooth): bấm dây không giới hạn trong số phút của gói, in số
 // tấm Instax của gói; khách chọn ảnh và bộ khung trên điện thoại.
 function captureTerms(pack) {
-  if (pack.printSize !== "instax")
+  if (!isPolaroidSize(pack.printSize))
     return { shots: pack.shots, captureDuration: pack.duration, prints: pack.prints, selectCount: pack.selectCount || 4,
       printSize: pack.printSize || "full" };
   return { captureDuration: Number(pack.duration) || 10, prints: Math.max(INSTAX_SHEETS, Number(pack.prints) || 0),
-    selectCount: Number(pack.selectCount) || 1, printSize: "instax" };
+    selectCount: Number(pack.selectCount) || 1, printSize: pack.printSize };
 }
 
 // Phiếu tại quầy không cần thông tin khách. Vẫn kiểm tra khi client cũ gửi kèm.

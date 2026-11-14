@@ -838,7 +838,7 @@ test("Ca trực & Đối soát are gone; an account still storing the old shift 
   }).expect(400);
 });
 
-test("the admin copies frames from the Selfbooth site: image, theme and tilted slots, printed on Instax, never twice", async () => {
+test("the admin copies frames from the Selfbooth site: image, theme and tilted slots, printed 20 × 30 on the DS820, never twice", async () => {
   const sharp = (await import("sharp")).default;
   const png = await sharp({ create: { width: 600, height: 900, channels: 4, background: "#f3e6da" } }).png().toBuffer();
   const ids = ["6aeebb9523cad44f2f220e20", "6aeebb9523cad44f2f220e21"];
@@ -866,16 +866,25 @@ test("the admin copies frames from the Selfbooth site: image, theme and tilted s
     assert.deepEqual(list.frames.map((f) => [f.id, f.slots, f.angled, f.copied]), [[ids[0], 2, true, false], [ids[1], 1, false, false]]);
     assert.ok(list.frames[0].preview.endsWith(`/api/frames/${ids[0]}/preview?v=abc`), list.frames[0].preview);
     const copied = (await admin.post("/api/admin/selfbooth-frames").send({ ids }).expect(201)).body;
-    assert.deepEqual(copied, { created: ["khung 1", "khung 2"], skipped: [] });
+    assert.deepEqual(copied, { created: ["khung 1", "khung 2"], skipped: [], converted: [] });
     const [one, two] = await Promise.all(ids.map((id) => Frame.findOne({ source: `selfbooth:${id}` }).lean()));
-    assert.deepEqual([one.printSize, one.themeName, one.order, one.active], ["instax", "khung 1", 1, true]);
+    assert.deepEqual([one.printSize, one.themeName, one.order, one.active], ["large", "khung 1", 1, true]);
     assert.match(one.image, /^data:image\/png;base64,/);
     assert.ok(one.thumb && one.imageHash);
     assert.deepEqual(one.slots.map((s) => [s.kind, s.photo, s.angle]), [["photo", 1, undefined], ["photo", 2, -8.4]]);
     assert.equal(two.themeName, "Gói 1 (Selfbooth)");
     // Khung đã chép: lần sau không chép trùng.
     assert.deepEqual((await admin.post("/api/admin/selfbooth-frames").send({ ids: [ids[0]] }).expect(200)).body,
-      { created: [], skipped: ["khung 1"] });
+      { created: [], skipped: ["khung 1"], converted: [] });
+    // Bản chép trước 14/11 (khổ Instax): chép lại thì đổi sang tờ 20 × 30, giữ nguyên ảnh và các ô.
+    await Frame.updateOne({ _id: two._id }, { $set: { printSize: "instax" } });
+    assert.deepEqual((await admin.get("/api/admin/selfbooth-frames").expect(200)).body.frames.map((f) => [f.copied, f.outdated]),
+      [[true, false], [false, true]]);
+    assert.deepEqual((await admin.post("/api/admin/selfbooth-frames").send({ ids }).expect(200)).body,
+      { created: [], skipped: ["khung 1"], converted: ["khung 2"] });
+    const twoAfter = await Frame.findById(two._id).lean();
+    assert.deepEqual([twoAfter.printSize, twoAfter.image, twoAfter.slots.length], ["large", two.image, two.slots.length]);
+    assert.equal(await Frame.countDocuments({ source: /^selfbooth:/ }), 2);
     assert.deepEqual((await admin.get("/api/admin/selfbooth-frames").expect(200)).body.frames.map((f) => f.copied), [true, true]);
     // Khung có ô xoay vào danh mục công khai cùng góc xoay (album ghép đúng ô nghiêng).
     const listed = (await request(app).get("/api/catalog").expect(200)).body.frames.find((f) => f._id === String(one._id));
@@ -887,5 +896,59 @@ test("the admin copies frames from the Selfbooth site: image, theme and tilted s
   } finally {
     globalThis.fetch = realFetch;
     await Frame.deleteMany({ $or: [{ source: { $in: ids.map((id) => `selfbooth:${id}`) } }, { _id: boothFrame._id }] });
+  }
+});
+
+test("Selfbooth room on a DNP DS820: timed 20 x 30 package, its code, the phone's 2400 x 3600 sheets, the room's DS820 agent", async () => {
+  const sharp = (await import("sharp")).default;
+  const previous = config.printAgentToken;
+  config.printAgentToken = "";
+  const selfRoom = await Room.create({ name: "Selfbooth 1", branch: "Bắc Giang", kind: "polaroid", active: true });
+  let packId;
+  try {
+    // Gói như Selfbooth: giá, số phút, số tờ 20 x 30; chụp không giới hạn.
+    const pack = (await admin.post("/api/admin/packages").send({ name: "Chụp đôi DS820", description: "", price: 150000,
+      duration: 12, prints: 2, shots: 20, printSize: "large", active: true }).expect(200)).body;
+    packId = pack._id;
+    assert.deepEqual([pack.printSize, pack.duration, pack.prints, pack.shots], ["large", 12, 2, 0]);
+    const sold = (await admin.post("/api/admin/tickets").send({ package: pack._id, room: String(selfRoom._id),
+      requestKey: randomUUID(), expectedTotal: 150000, paymentMethod: "cash", paymentReceived: true }).expect(201)).body;
+    const device = jwt.sign({ type: "kiosk", room: String(selfRoom._id), jti: randomUUID() }, config.secret);
+    const opened = (await request(app).post("/api/kiosk/claim").send({ device, code: sold.code }).expect(200)).body;
+    assert.deepEqual([opened.booking.printSize, opened.booking.captureDuration, opened.booking.prints], ["large", 12, 2]);
+    await Booking.updateOne({ _id: opened.booking._id }, { $set: { status: "completed",
+      photos: [{ _id: new mongoose.Types.ObjectId(), kind: "original", number: 1, file: "selfbooth-1.jpg" }] } });
+    const album = opened.accessToken;
+    // Điện thoại: có thời gian chọn ảnh, xoá được ảnh như Selfbooth.
+    await request(app).post(`/api/albums/${album}/edit-start`).expect(200);
+    const sheet = (w, h) => sharp({ create: { width: w, height: h, channels: 3, background: "#f2e6d8" } }).jpeg().toBuffer();
+    const send = (sheets, key = randomUUID()) => request(app).post(`/api/albums/${album}/print-pack`)
+      .set("Content-Type", "application/octet-stream").set("X-Print-Key", key)
+      .set("X-Print-Frame", encodeURIComponent("khung 1"))
+      .set("X-Print-Sheets", sheets.map((s) => s.length).join(",")).send(Buffer.concat(sheets));
+    // Chương trình in DS820 của phòng đã cài (báo về một lần): lệnh in mới của phòng vào hàng chờ.
+    const { token: printer, kind } = (await staff.post(`/api/admin/rooms/${selfRoom._id}/printer`).send({}).expect(200)).body;
+    assert.equal(kind, "polaroid");
+    const auth = { Authorization: `Bearer ${printer}` };
+    assert.equal((await request(app).post("/api/print-agent/claim").set(auth).send({ printSizes: ["large"] }).expect(200)).body.job, null);
+    // Tờ 10 x 15 không in được trên vé 20 x 30.
+    assert.match((await send([await sheet(1200, 1800)]).expect(400)).body.message, /2400 × 3600/);
+    const job = (await send([await sheet(2400, 3600), await sheet(3600, 2400)]).expect(201)).body;
+    assert.equal(job.printSheets, 2);
+    const stored = await PrintJob.findById(job._id).lean();
+    assert.deepEqual([stored.printSize, stored.sheets.length], ["large", 2]);
+    // Chương trình in DS820 của phòng nhận đúng lệnh khổ 20 x 30 của phòng mình (máy RX1 thì không).
+    assert.equal((await request(app).post("/api/print-agent/claim").set(auth).send({ printSizes: ["full", "strip"] }).expect(200)).body.job, null);
+    const leased = (await request(app).post("/api/print-agent/claim").set(auth).send({ printSizes: ["large"] }).expect(200)).body.job;
+    assert.deepEqual([leased.id, leased.printSize, leased.sheets.length], [String(job._id), "large", 2]);
+    await request(app).post(`/api/print-agent/jobs/${leased.id}/complete`).set(auth)
+      .send({ leaseId: leased.leaseId, sent: true, message: "Đã gửi 2 tờ tới máy DNP DS820 (8x12)." }).expect(200);
+    assert.equal((await PrintJob.findById(job._id)).spoolStatus, "sent");
+    // Hết tờ của vé: không in thêm.
+    await send([await sheet(2400, 3600)]).expect(409);
+  } finally {
+    config.printAgentToken = previous;
+    await Room.deleteOne({ _id: selfRoom._id });
+    if (packId) await Package.deleteOne({ _id: packId });
   }
 });

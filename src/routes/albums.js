@@ -6,6 +6,7 @@ import { mediaReference } from "../services/r2.js";
 import { Booking, PrintJob, Setting } from "../models/index.js";
 import { selectSecondsOf } from "../services/select-time.js";
 import { appendCapture, attachOriginal, renumberPhotoStages } from "../services/capture.js";
+import { isPolaroidSize } from "../print-sizes.js";
 import { timed } from "../services/image-save-queue.js";
 import {
   deleteMedia,
@@ -241,7 +242,7 @@ export async function submitPrintPack(req, res) {
   const b = await album(req);
   const direct = req.directPrintScope;
   const archived = req.archivePrint === true;
-  if (direct && (String(b.room) !== direct.room || b.printSize === "instax"))
+  if (direct && (String(b.room) !== direct.room || isPolaroidSize(b.printSize)))
     fail(403, "Máy in cục bộ không thuộc phòng của đơn này.");
   const { fingerprint } = d;
   const verifyReplay = (job) => {
@@ -297,7 +298,7 @@ export async function submitPrintPack(req, res) {
       branch: b.branch,
       // Cắt đôi hay in nguyên tờ theo khung thật sự được in (gói ảnh nhỏ chưa có khung nhỏ thì
       // ghép khung lớn: không được cắt đôi), không theo khổ của gói.
-      printSize: b.printSize === "instax" ? "instax" : d.printSize || b.printSize || "full",
+      printSize: isPolaroidSize(b.printSize) ? b.printSize : d.printSize || b.printSize || "full",
       copies: 1,
       frameName: d.frameName,
       file: files[0],
@@ -342,7 +343,7 @@ albumsRouter.post("/:token/print-pack", printLimit, printBody, submitPrintPack);
 // tải lại trang hay mở trên máy khác vẫn cùng một hạn. serverTime: điện thoại bù đồng hồ lệch.
 albumsRouter.post("/:token/edit-start", async (req, res) => {
   const b = await album(req, "status printSize editEndsAt");
-  if (b.printSize !== "instax") fail(409, "Album này không chọn ảnh trên điện thoại.");
+  if (!isPolaroidSize(b.printSize)) fail(409, "Album này không chọn ảnh trên điện thoại.");
   if (b.status !== "completed") fail(409, "Buổi chụp chưa kết thúc. Vui lòng đợi máy chụp gửi xong ảnh.");
   let endsAt = b.editEndsAt;
   if (!endsAt) {
@@ -392,7 +393,7 @@ albumsRouter.post("/:token/photos", photoBody, async (req, res) => {
 // tải ảnh lên cùng lúc). Album phòng Photobooth vẫn chỉ để xem.
 albumsRouter.delete("/:token/photos", async (req, res) => {
   const b = await album(req, { status: 1, captureEndsAt: 1, printSize: 1 });
-  if (b.printSize !== "instax") fail(404, "Không tìm thấy.");
+  if (!isPolaroidSize(b.printSize)) fail(404, "Không tìm thấy.");
   const ids = [...new Set(z.array(id).min(1).max(200).parse(req.body?.ids))]
     .map((photo) => new mongoose.Types.ObjectId(photo));
   if (b.status !== "completed") fail(409, "Phiên chụp chưa hoàn thành.");

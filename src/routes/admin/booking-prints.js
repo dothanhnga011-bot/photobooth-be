@@ -11,6 +11,7 @@ import { printEvents } from "../../services/print-events.js";
 import { publicJob } from "../print-helpers.js";
 import { printBody, readPrintPack } from "../print-upload.js";
 import { fail, id, token } from "../validation.js";
+import { isPolaroidSize } from "../../print-sizes.js";
 
 export const bookingPrintsRouter = Router();
 
@@ -60,7 +61,8 @@ bookingPrintsRouter.post("/bookings/:id/reprint", allow("print:operate"), async 
   if (previous) return respond(res, previous, booking);
   const source = await PrintJob.findOne({ _id: d.jobId, booking: booking._id, ...livePrintFilter() });
   if (!source) fail(404, "File in không còn hoặc đã hết hạn lưu trữ.");
-  if (d.delivery === "local" && source.printSize === "instax") fail(400, "Instax cần chương trình in Instax riêng.");
+  if (d.delivery === "local" && isPolaroidSize(source.printSize))
+    fail(400, "Ảnh phòng Polaroid in qua hàng chờ của máy in phòng đó (DS820 / Instax), không in thẳng ở quầy.");
   if (d.delivery === "local" && (source.sheets?.length || 1) * d.copies > 20)
     fail(400, "Mỗi lượt hỗ trợ tối đa 20 tờ in.");
   let job;
@@ -89,7 +91,7 @@ bookingPrintsRouter.post("/bookings/:id/reprint", allow("print:operate"), async 
 // A manually composed recovery sheet is archived after local output, without charging the album.
 bookingPrintsRouter.post("/bookings/:id/print-file", allow("print:operate"), printBody, async (req, res) => {
   const booking = await bookingFor(req, true);
-  if (booking.printSize === "instax") fail(400, "Instax cần chương trình in Instax riêng.");
+  if (isPolaroidSize(booking.printSize)) fail(400, "Ảnh phòng Polaroid in qua hàng chờ của máy in phòng đó (DS820 / Instax).");
   const d = readPrintPack(req);
   const copies = z.coerce.number().int().min(1).max(20).parse(req.get("X-Print-Copies") || 1);
   if (d.sheets.length * copies > 20) fail(400, "Mỗi lượt hỗ trợ tối đa 20 tờ in.");
