@@ -5,7 +5,7 @@ import { z } from "zod";
 import { mediaReference } from "../services/r2.js";
 import { Booking, PrintJob, Setting } from "../models/index.js";
 import { selectSecondsOf } from "../services/select-time.js";
-import { appendCapture, attachOriginal } from "../services/capture.js";
+import { appendCapture, attachOriginal, renumberPhotoStages } from "../services/capture.js";
 import { timed } from "../services/image-save-queue.js";
 import {
   deleteMedia,
@@ -386,6 +386,25 @@ albumsRouter.post("/:token/photos", photoBody, async (req, res) => {
       preview: d.preview, previewOnly: Boolean(d.later), storedOriginal: storedOriginal(b._id, d) },
   ));
   res.status(201).json(await albumBooking(saved));
+});
+// Album phòng Selfbooth (khổ Instax): khách xoá ảnh như bên Selfbooth — ảnh bị ẩn rồi được dọn cùng ảnh
+// hết hạn; các ảnh còn lại đánh số lại 1, 2, 3… trong cùng một lần ghi (không mất ảnh khi điện thoại đang
+// tải ảnh lên cùng lúc). Album phòng Photobooth vẫn chỉ để xem.
+albumsRouter.delete("/:token/photos", async (req, res) => {
+  const b = await album(req, { status: 1, captureEndsAt: 1, printSize: 1 });
+  if (b.printSize !== "instax") fail(404, "Không tìm thấy.");
+  const ids = [...new Set(z.array(id).min(1).max(200).parse(req.body?.ids))]
+    .map((photo) => new mongoose.Types.ObjectId(photo));
+  if (b.status !== "completed") fail(409, "Phiên chụp chưa hoàn thành.");
+  await Booking.updateOne({ _id: b._id, status: "completed" }, [
+    { $set: { photos: { $map: {
+      input: { $ifNull: ["$photos", []] },
+      as: "p",
+      in: { $cond: [{ $in: ["$$p._id", ids] }, { $mergeObjects: ["$$p", { deleted: true }] }, "$$p"] },
+    } } } },
+    ...renumberPhotoStages(),
+  ]);
+  res.json(await albumBooking(await album(req)));
 });
 // Ảnh xem trước tới trước, ảnh gốc tới sau: máy chụp gửi ảnh gốc của máy ảnh cho ảnh album đã có.
 // 1) Xin URL tải thẳng lên kho R2 cho đúng ảnh đó (ảnh đã có ảnh gốc: { saved: true }; kho MongoDB: 404,

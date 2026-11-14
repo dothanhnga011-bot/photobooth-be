@@ -5,7 +5,7 @@ import { User, Room, Package, Frame, Sticker } from "../../models/index.js";
 import { admin, isAdmin, RETIRED_PERMISSIONS, staffBranch, STAFF_PERMISSIONS } from "../../middleware/auth.js";
 import { fail, id, text, priceVND } from "../validation.js";
 import { leastSheets } from "../print-count.js";
-import { polaroidDuration, polaroidPackage } from "../../polaroid-layouts.js";
+import { polaroidPackage } from "../../polaroid-layouts.js";
 import { moveFrame, withFrameCatalogLock } from "../../services/frame-order.js";
 import {
   FRAME_LIST_FIELDS,
@@ -89,10 +89,11 @@ const resources = {
         .transform((items) => [...new Set(items)]),
       active,
     }).superRefine((pack, ctx) => {
-      // Layout Polaroid (khổ Instax): luôn in 1 tấm, chụp không giới hạn trong thời gian chụp.
+      // Gói Polaroid (khổ Instax) như Selfbooth: chụp không giới hạn trong số phút của gói, kèm ít
+      // nhất 1 tấm Instax.
       if (pack.printSize === "instax") {
-        if (pack.selectCount !== undefined && !polaroidDuration(pack.selectCount))
-          ctx.addIssue({ code: "custom", path: ["selectCount"], message: "Polaroid chỉ chọn 1 ảnh (3 phút) hoặc 2 ảnh (5 phút)" });
+        if (!(pack.prints >= 1))
+          ctx.addIssue({ code: "custom", path: ["prints"], message: "gói Polaroid kèm ít nhất 1 tấm Instax" });
         return;
       }
       if (pack.shots < 1)
@@ -129,13 +130,17 @@ const resources = {
       slots: z
         .array(
           z.object({
-            x: z.number().min(0).max(1),
-            y: z.number().min(0).max(1),
-            w: z.number().gt(0).max(1),
-            h: z.number().gt(0).max(1),
+            // Ô xoay (khung chép từ Selfbooth): hình chữ nhật chưa xoay có thể ló ra ngoài mép khung,
+            // phần nằm trên khung vẫn đúng chỗ — nới giới hạn cho ô có góc.
+            x: z.number().min(-1).max(1),
+            y: z.number().min(-1).max(1),
+            w: z.number().gt(0).max(2),
+            h: z.number().gt(0).max(2),
+            angle: z.number().min(-180).max(180).optional(),
             kind: z.enum(["photo", "qr", "date"]).default("photo"),
             photo: z.number().int().min(1).max(40).optional(),
-          }),
+          }).refine((s) => s.angle || (s.x >= 0 && s.y >= 0 && s.w <= 1 && s.h <= 1),
+            "Vùng ảnh phải nằm trong khung."),
         )
         .max(60, "Mỗi khung hỗ trợ tối đa 60 vùng.")
         .refine(
@@ -146,7 +151,7 @@ const resources = {
         .transform((slots) => {
           let next = 0;
           return slots.map((s) => s.kind === "photo"
-            ? { ...s, photo: s.photo ?? ++next }
+            ? { ...s, photo: s.photo ?? ++next, ...(s.angle ? {} : { angle: undefined }) }
             : { x: s.x, y: s.y, w: s.w, h: s.h, kind: s.kind });
         })
         .refine(
@@ -192,6 +197,8 @@ const resources = {
     }),
   ],
 };
+// Cùng quy tắc kiểm tra khung cho khung chép từ Selfbooth (selfbooth-frames.js).
+export const frameInput = resources.frames[1];
 for (const [route, [Model, schema]] of Object.entries(resources)) {
   // adminRouter đã kiểm tra phiên: lễ tân chỉ xem phòng đang hoạt động để mở kiosk.
   resourcesRouter.get(

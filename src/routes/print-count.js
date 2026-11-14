@@ -1,7 +1,7 @@
 // Số tờ in của gói: gói lưu số tờ 10 × 15 cm; khổ nhỏ (strip) một tờ cắt đôi thành 2 tờ nhỏ;
 // khổ Instax mỗi tấm là một thẻ Instax Wide.
-// Khách in tối thiểu 2 tờ: khổ nhỏ ít nhất 1 tờ 10 × 15, khổ to 2 tờ. Layout Polaroid (Instax) in
-// đúng 1 tấm: máy Instax Link WIDE in từng tấm một.
+// Khách in tối thiểu 2 tờ: khổ nhỏ ít nhất 1 tờ 10 × 15, khổ to 2 tờ. Gói Polaroid (Instax) kèm ít
+// nhất 1 tấm: máy Instax Link WIDE in từng tấm một.
 // Máy chụp tính giống hệt (photobooth-fe/src/kiosk/print-count.js).
 export const MIN_PIECES = 2;
 export const INSTAX_SHEETS = 1;

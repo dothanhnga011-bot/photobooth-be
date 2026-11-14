@@ -429,25 +429,26 @@ test("packages print at least two pieces: one strip sheet cut in half, or two fu
   await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, printSize: "full", prints: 2 }).expect(200);
 });
 
-test("Instax: unlimited shots, fixed 3/5-minute packages, one print and its own extra price", async () => {
-  const base = { name: "Gói Instax", description: "", price: 120000, duration: 5, selectCount: 1, active: true, printSize: "instax" };
-  // Layout Polaroid luôn in 1 tấm, không giới hạn số lần chụp: số gửi lên (hay không gửi) đều bỏ qua.
-  const saved = (await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, prints: 4, shots: 30 }).expect(200)).body;
-  assert.deepEqual([saved.prints, saved.shots, saved.duration, saved.selectCount], [1, 0, 3, 1]);
-  assert.equal((await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, prints: 1, shots: 0 }).expect(200)).body.shots, 0);
-  const large = (await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, selectCount: 2, duration: 22 }).expect(200)).body;
-  assert.deepEqual([large.duration, large.selectCount, large.shots], [5, 2, 0]);
-  await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, selectCount: 4 }).expect(400);
-  await admin.put(`/api/admin/packages/${pack._id}`).send(base).expect(200);
+test("Instax packages are timed like Selfbooth: unlimited shots, the package's minutes and Instax prints, own extra price", async () => {
+  const base = { name: "Gói Instax", description: "", price: 120000, duration: 7, active: true, printSize: "instax" };
+  // Gói Polaroid như Selfbooth: chụp không giới hạn (số lần chụp gửi lên bị bỏ qua) trong số phút của gói,
+  // kèm số tấm Instax của gói.
+  const saved = (await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, prints: 2, shots: 30 }).expect(200)).body;
+  assert.deepEqual([saved.prints, saved.shots, saved.duration], [2, 0, 7]);
+  const none = await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, prints: 0 }).expect(400);
+  assert.match(none.body.message, /ít nhất 1 tấm Instax/);
+  const long = (await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, prints: 1, duration: 22 }).expect(200)).body;
+  assert.deepEqual([long.duration, long.prints, long.shots], [22, 1, 0]);
+  await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, prints: 1 }).expect(200);
   // Gói photobooth vẫn cần ít nhất 1 lần chụp.
   const noShots = await admin.put(`/api/admin/packages/${pack._id}`)
     .send({ ...base, printSize: "full", prints: 2, shots: 0 }).expect(400);
   assert.match(noShots.body.message, /Số lần chụp: phải từ 1 trở lên/);
-  // Gói cũ còn ghi 2 tấm, 10 lần chụp: lượt Polaroid vẫn in 1 tấm, chụp không giới hạn.
+  // Gói cũ còn ghi 10 lần chụp: chụp không giới hạn; số phút và số tấm theo gói.
   await Package.updateOne({ _id: pack._id }, { $set: { prints: 2, shots: 10, duration: 22 } });
   const publicPack = (await request(app).get("/api/catalog").expect(200)).body.packages.find(p => p._id === String(pack._id));
   const adminPack = (await admin.get("/api/admin/packages").expect(200)).body.find(p => p._id === String(pack._id));
-  for (const p of [publicPack, adminPack]) assert.deepEqual([p.duration, p.selectCount, p.shots, p.prints, p.price], [3, 1, 0, 1, 120000]);
+  for (const p of [publicPack, adminPack]) assert.deepEqual([p.duration, p.shots, p.prints, p.price], [22, 0, 2, 120000]);
   await admin.put(`/api/admin/rooms/${room._id}`).send({
     name: "Máy 1", description: "", branch: "Bắc Giang", kind: "polaroid", paymentTest: false, active: true,
   }).expect(200);
@@ -503,21 +504,23 @@ test("Instax: unlimited shots, fixed 3/5-minute packages, one print and its own 
   const replay = (await sell(layout.requestKey).expect(200)).body;
   assert.equal(replay._id, started.booking._id);
   let stored = await Booking.findById(started.booking._id).lean();
+  // Gói đang ghi 22 phút, 2 tấm Instax: mã mang đúng số phút và số tấm của gói.
   assert.deepEqual([stored.printSize, stored.prints, stored.total, stored.paid, stored.source, stored.status],
-    ["instax", 1, 120000, true, "counter", "checked_in"]);
+    ["instax", 2, 120000, true, "counter", "checked_in"]);
   assert.equal(stored.shots, undefined);
-  assert.deepEqual([stored.captureDuration, stored.selectCount], [3, 1]);
+  assert.deepEqual([stored.captureDuration, stored.selectCount], [22, 1]);
   const smallStart = (await request(app).post("/api/kiosk/start").send({ captureToken: started.captureToken }).expect(200)).body.booking;
-  assert.equal(new Date(smallStart.captureEndsAt) - new Date(smallStart.captureStartedAt), 180000);
-  await Package.updateOne({ _id: pack._id }, { selectCount: 2, duration: 22 });
+  assert.equal(new Date(smallStart.captureEndsAt) - new Date(smallStart.captureStartedAt), 22 * 60000);
+  // Sửa số phút của gói: mã bán sau (và mã chưa bắt đầu chụp) theo số phút mới.
+  await Package.updateOne({ _id: pack._id }, { duration: 12 });
   const largeCode = (await sell(randomUUID()).expect(201)).body;
   const largeSession = (await request(app).post('/api/kiosk/claim').send({ device: token, code: largeCode.code }).expect(200)).body;
-  assert.deepEqual([largeSession.booking.selectCount, largeSession.booking.captureDuration, largeSession.booking.shots], [2, 5, undefined]);
+  assert.deepEqual([largeSession.booking.captureDuration, largeSession.booking.shots], [12, undefined]);
   const largeStart = (await request(app).post("/api/kiosk/start").send({ captureToken: largeSession.captureToken }).expect(200)).body.booking;
-  assert.equal(new Date(largeStart.captureEndsAt) - new Date(largeStart.captureStartedAt), 300000);
-  // Replaying the old request after changing the package keeps its original 3 minutes.
+  assert.equal(new Date(largeStart.captureEndsAt) - new Date(largeStart.captureStartedAt), 12 * 60000);
+  // Replaying the old request after changing the package keeps the minutes it started with.
   const replaySmall = (await sell(layout.requestKey).expect(200)).body;
-  assert.equal(replaySmall.captureDuration, 3);
+  assert.equal(replaySmall.captureDuration, 22);
   // Không bán gói Instax bằng tiền mặt ở máy; nhân viên ghi nhận đã thu ở quầy.
   await request(app).post("/api/kiosk/sale").send({ ...layout, requestKey: randomUUID(), bills: [{ amount: 200000 }] }).expect(403);
   stored = await Booking.findById(stored._id).lean();
@@ -680,8 +683,8 @@ test("the shop edits the kiosk's on-screen texts; blank lines fall back to the k
   await admin.put("/api/admin/settings/kiosk-texts").send({ kioskTexts: {} }).expect(200);
 });
 
-test("the counter sells Polaroid layouts as codes; a code opens only in its kind of room and is not used up elsewhere", async () => {
-  const small = await Package.create({ name: "Ảnh nhỏ", price: 100000, duration: 10, prints: 1, selectCount: 1, printSize: "instax", active: true });
+test("the counter sells Polaroid packages as codes; a code opens only in its kind of room and is not used up elsewhere", async () => {
+  const small = await Package.create({ name: "Chụp đơn", price: 100000, duration: 7, prints: 1, printSize: "instax", active: true });
   const legacy = await Package.create({ name: "Polaroid 4 ảnh", price: 110000, duration: 10, prints: 2, selectCount: 4, printSize: "instax", active: true });
   const polaroidRoom = await Room.create({ name: "Polaroid 1", branch: "Bắc Giang", kind: "polaroid", active: true });
   const sell = (body, as = staff) => as.post("/api/admin/tickets").send({ name: "", phone: "", room: "", branch: "Bắc Giang",
@@ -689,24 +692,26 @@ test("the counter sells Polaroid layouts as codes; a code opens only in its kind
   const claim = (code, kioskRoom) => request(app).post("/api/kiosk/claim")
     .send({ code, device: jwt.sign({ type: "kiosk", room: String(kioskRoom._id), jti: randomUUID() }, config.secret) });
   try {
-    // Layout Polaroid: 1 ảnh, 3 phút, bấm dây không giới hạn, in 1 tấm Instax.
+    // Gói Polaroid như Selfbooth: 7 phút, bấm dây không giới hạn, in 1 tấm Instax.
     const code = (await sell({ package: String(small._id) }).expect(201)).body;
     const booking = await Booking.findById(code._id);
-    assert.deepEqual([booking.printSize, booking.selectCount, booking.captureDuration, booking.prints, booking.shots],
-      ["instax", 1, 3, 1, undefined]);
-    assert.match((await sell({ package: String(legacy._id) }).expect(400)).body.message, /Polaroid chỉ hỗ trợ/);
-    // Phiếu chờ thu tiền (Tạo mã chụp ở quầy) → xác nhận đã thu → mã 6 số, cũng cho layout Polaroid.
+    assert.deepEqual([booking.printSize, booking.captureDuration, booking.prints, booking.shots],
+      ["instax", 7, 1, undefined]);
+    // Gói cũ ghi "4 ảnh" vẫn bán được: theo số phút và số tấm của gói.
+    const old = await Booking.findById((await sell({ package: String(legacy._id) }).expect(201)).body._id);
+    assert.deepEqual([old.captureDuration, old.prints], [10, 2]);
+    // Phiếu chờ thu tiền (Tạo mã chụp ở quầy) → xác nhận đã thu → mã 6 số, cũng cho gói Polaroid.
     const draft = (await staff.post("/api/admin/tickets/draft").send({ branch: "Bắc Giang", package: String(small._id),
       requestKey: randomUUID(), expectedTotal: small.price }).expect(201)).body;
     const activated = (await staff.patch(`/api/admin/tickets/${draft._id}/activate`)
       .send({ paymentReceived: true, paymentMethod: "cash", expectedTotal: small.price }).expect(200)).body;
     assert.match(activated.code, /^\d{6}$/);
-    assert.deepEqual([(await Booking.findById(draft._id)).printSize, (await Booking.findById(draft._id)).captureDuration], ["instax", 3]);
+    assert.deepEqual([(await Booking.findById(draft._id)).printSize, (await Booking.findById(draft._id)).captureDuration], ["instax", 7]);
     assert.match((await sell({ package: String(small._id), room: String(room._id) }).expect(400)).body.message,
-      /Layout Polaroid chỉ dùng ở phòng Polaroid/);
+      /Gói Polaroid chỉ dùng ở phòng Polaroid/);
     assert.match((await sell({ package: String(small._id), branch: "Hà Nội" }, admin).expect(400)).body.message, /chưa có phòng Polaroid/);
     assert.match((await sell({ package: String(pack._id), room: String(polaroidRoom._id) }).expect(400)).body.message,
-      /Phòng Polaroid chỉ nhận mã của layout Polaroid/);
+      /Phòng Polaroid chỉ nhận mã của gói Polaroid/);
 
     // Nhầm phòng: báo rõ, mã vẫn còn; đúng phòng Polaroid thì mở lượt chụp Instax.
     assert.match((await claim(code.code, room).expect(400)).body.message, /dành cho phòng Polaroid/);
@@ -831,4 +836,56 @@ test("Ca trực & Đối soát are gone; an account still storing the old shift 
   await admin.put(`/api/admin/users/${user._id}`).send({
     name: "Ca cũ", email: user.email, role: "staff", branch: "Bắc Giang", active: true, permissions: ["orders:export", "made:up"],
   }).expect(400);
+});
+
+test("the admin copies frames from the Selfbooth site: image, theme and tilted slots, printed on Instax, never twice", async () => {
+  const sharp = (await import("sharp")).default;
+  const png = await sharp({ create: { width: 600, height: 900, channels: 4, background: "#f3e6da" } }).png().toBuffer();
+  const ids = ["6aeebb9523cad44f2f220e20", "6aeebb9523cad44f2f220e21"];
+  const catalog = { frames: [
+    { _id: ids[0], name: "khung 1", themeName: "khung 1", order: 1, printSize: "full", imageHash: "abc",
+      slots: [{ x: 0.05, y: 0.08, w: 0.2, h: 0.17 }, { x: -0.02, y: 0.3, w: 0.4, h: 0.2, angle: -8.4 }] },
+    { _id: ids[1], name: "khung 2", themeName: "Gói 1", order: 2, printSize: "full", imageHash: "def",
+      slots: [{ x: 0.1, y: 0.1, w: 0.8, h: 0.8 }] },
+  ] };
+  const seen = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    seen.push(String(url));
+    if (String(url) === `${config.selfboothApi}/api/catalog`) return Response.json(catalog);
+    const match = String(url).match(/\/api\/frames\/([a-f\d]{24})\/image$/);
+    if (match) return new Response(png, { headers: { "Content-Type": "image/png" } });
+    return new Response("missing", { status: 404 });
+  };
+  // "Gói 1" đã là chủ đề Photobooth (khung 10 × 15): khung Instax chép sang vào chủ đề "Gói 1 (Selfbooth)".
+  const boothFrame = await Frame.create({ name: "Khung PTB", themeName: "Gói 1", printSize: "full", image: png.toString("base64"),
+    slots: [{ x: 0, y: 0, w: 1, h: 1, kind: "photo", photo: 1 }], active: true });
+  try {
+    await staff.get("/api/admin/selfbooth-frames").expect(403);
+    const list = (await admin.get("/api/admin/selfbooth-frames").expect(200)).body;
+    assert.deepEqual(list.frames.map((f) => [f.id, f.slots, f.angled, f.copied]), [[ids[0], 2, true, false], [ids[1], 1, false, false]]);
+    assert.ok(list.frames[0].preview.endsWith(`/api/frames/${ids[0]}/preview?v=abc`), list.frames[0].preview);
+    const copied = (await admin.post("/api/admin/selfbooth-frames").send({ ids }).expect(201)).body;
+    assert.deepEqual(copied, { created: ["khung 1", "khung 2"], skipped: [] });
+    const [one, two] = await Promise.all(ids.map((id) => Frame.findOne({ source: `selfbooth:${id}` }).lean()));
+    assert.deepEqual([one.printSize, one.themeName, one.order, one.active], ["instax", "khung 1", 1, true]);
+    assert.match(one.image, /^data:image\/png;base64,/);
+    assert.ok(one.thumb && one.imageHash);
+    assert.deepEqual(one.slots.map((s) => [s.kind, s.photo, s.angle]), [["photo", 1, undefined], ["photo", 2, -8.4]]);
+    assert.equal(two.themeName, "Gói 1 (Selfbooth)");
+    // Khung đã chép: lần sau không chép trùng.
+    assert.deepEqual((await admin.post("/api/admin/selfbooth-frames").send({ ids: [ids[0]] }).expect(200)).body,
+      { created: [], skipped: ["khung 1"] });
+    assert.deepEqual((await admin.get("/api/admin/selfbooth-frames").expect(200)).body.frames.map((f) => f.copied), [true, true]);
+    // Khung có ô xoay vào danh mục công khai cùng góc xoay (album ghép đúng ô nghiêng).
+    const listed = (await request(app).get("/api/catalog").expect(200)).body.frames.find((f) => f._id === String(one._id));
+    assert.equal(listed.slots[1].angle, -8.4);
+    // Web Selfbooth không trả lời: báo rõ, không tạo gì.
+    globalThis.fetch = async () => { throw Object.assign(new Error("down"), { name: "TypeError" }); };
+    assert.match((await admin.get("/api/admin/selfbooth-frames").expect(502)).body.message, /Không kết nối được tới web Selfbooth/);
+    assert.ok(seen.every((url) => url.startsWith(config.selfboothApi)));
+  } finally {
+    globalThis.fetch = realFetch;
+    await Frame.deleteMany({ $or: [{ source: { $in: ids.map((id) => `selfbooth:${id}`) } }, { _id: boothFrame._id }] });
+  }
 });

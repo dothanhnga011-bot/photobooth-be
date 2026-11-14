@@ -25,7 +25,6 @@ import { deleteMedia, saveMedia } from "../services/media.js";
 import { mediaReference } from "../services/r2.js";
 import { fail, today, token } from "./validation.js";
 import { publicBooking } from "./booking-helpers.js";
-import { polaroidDuration } from "../polaroid-layouts.js";
 import { rejectArchivedSale } from "../services/revenue-ledger.js";
 import {
   captureBooking,
@@ -329,12 +328,10 @@ kioskRouter.post("/start", async (req, res) => {
   const d = z.object({ captureToken: z.string() }).parse(req.body);
   const { b, payload } = await captureBooking(d.captureToken);
   if (!b.captureStartedAt && b.status === "checked_in") {
-    // Thời gian chụp theo bảng giá lúc khách bắt đầu chụp (Khổ ảnh & bảng giá): sửa thời gian của gói thì
-    // mã đã bán mà chưa chụp cũng theo. Layout Polaroid: thời gian của layout. Gói đã xoá: giữ thời gian
-    // lúc bán (vé cũ không có thì 10 phút).
-    const current = b.printSize === "instax"
-      ? polaroidDuration(b.selectCount)
-      : b.package && (await Package.findById(b.package).select("duration").lean())?.duration;
+    // Thời gian chụp theo bảng giá lúc khách bắt đầu chụp (Khổ ảnh & bảng giá), cả gói Polaroid: sửa thời
+    // gian của gói thì mã đã bán mà chưa chụp cũng theo. Gói đã xoá: giữ thời gian lúc bán (vé cũ không
+    // có thì 10 phút).
+    const current = b.package && (await Package.findById(b.package).select("duration").lean())?.duration;
     b.captureDuration = current || b.captureDuration || 10;
     b.captureStartedAt = new Date();
     b.captureEndsAt = new Date(b.captureStartedAt.getTime() + b.captureDuration * 60000);

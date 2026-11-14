@@ -13,6 +13,7 @@ import { bookingPrintsRouter } from "./booking-prints.js";
 import { statsRouter } from "./stats.js";
 import { settingsRouter } from "./settings.js";
 import { resourcesRouter } from "./resources.js";
+import { selfboothFramesRouter } from "./selfbooth-frames.js";
 import { storageRouter } from "./storage.js";
 import { studioRouter } from "./studio.js";
 
@@ -82,4 +83,5 @@ adminRouter.post("/rooms/:id/printer", allow("rooms:setup"), async (req, res) =>
 });
 adminRouter.use("/settings", settingsRouter);
 adminRouter.use(studioRouter);
+adminRouter.use("/selfbooth-frames", selfboothFramesRouter);
 adminRouter.use(resourcesRouter);

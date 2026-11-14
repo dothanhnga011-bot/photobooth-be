@@ -60,3 +60,18 @@ test("photobooth albums, sessions still shooting and unknown albums get no phone
   await start("no-such-album").expect(404);
   assert.equal((await Booking.findOne({ accessToken: "still-shooting" })).editEndsAt, undefined);
 });
+
+test("a Selfbooth album lets the guest delete photos (numbers close up); a photobooth album stays view-only", async () => {
+  const photo = (n) => ({ _id: new mongoose.Types.ObjectId(), kind: "original", number: n, file: `f${n}.jpg` });
+  const photos = [photo(1), photo(2), photo(3)];
+  await booking("selfbooth-delete", { photos });
+  const after = (await request(app).delete("/api/albums/selfbooth-delete/photos")
+    .send({ ids: [String(photos[0]._id)] }).expect(200)).body;
+  const visible = after.photos.filter((p) => p.kind === "original");
+  assert.deepEqual(visible.map((p) => [p.id, p.number]), [[String(photos[1]._id), 1], [String(photos[2]._id), 2]]);
+  const stored = await Booking.findOne({ accessToken: "selfbooth-delete" }).lean();
+  assert.equal(stored.photos.find((p) => String(p._id) === String(photos[0]._id)).deleted, true, "hidden, purged later");
+  await request(app).delete("/api/albums/selfbooth-delete/photos").send({ ids: [] }).expect(400);
+  await booking("photobooth-delete", { printSize: "full", photos: [photo(1)] });
+  await request(app).delete("/api/albums/photobooth-delete/photos").send({ ids: [String(photos[0]._id)] }).expect(404);
+});

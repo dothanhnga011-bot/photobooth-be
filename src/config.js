@@ -17,6 +17,9 @@ export const config = {
   dnpPrinter: process.env.DNP_PRINTER_NAME || "",
   dnpStripPrinter: process.env.DNP_STRIP_PRINTER_NAME || "",
   printAgentToken: process.env.PRINT_AGENT_TOKEN || "",
+  // Web Selfbooth của tiệm: quản trị chép khung từ danh sách khung công khai của web đó (Khung ảnh →
+  // "Chép khung từ Selfbooth").
+  selfboothApi: (process.env.SELFBOOTH_API_URL || "https://photo-be-drja.onrender.com").replace(/\/+$/, ""),
   // Giới hạn Atlas Free của tiệm; quản trị có thể ghi đè hoặc bỏ trong Hàng chờ in.
   mediaStorageLimitMB: Number(process.env.MEDIA_STORAGE_LIMIT_MB || 512),
   // Opt in only after the private R2 bucket and backend credentials exist.

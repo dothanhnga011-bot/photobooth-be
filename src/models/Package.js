@@ -13,7 +13,7 @@ const packageSchema = new mongoose.Schema(
     countdownSeconds: { type: Number, default: 10 },
     // Số ảnh khách chọn để ghép khung trên máy chụp (vd. gói 70k chọn 4 tấm).
     selectCount: { type: Number, default: 4 },
-    // full: 10 × 15 nguyên tờ · strip: 1 tờ cắt đôi · instax: layout Polaroid trên thẻ Instax Wide (máy Instax Link WIDE).
+    // full: 10 × 15 nguyên tờ · strip: 1 tờ cắt đôi · instax: gói Polaroid in thẻ Instax Wide (máy Instax Link WIDE).
     printSize: { type: String, enum: ["full", "strip", "instax"], default: "full" },
     // Chi nhánh được bán gói này; để trống = mọi chi nhánh (cấu hình chung).
     branches: { type: [String], default: [] },
