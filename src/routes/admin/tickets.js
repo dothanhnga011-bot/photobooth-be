@@ -17,10 +17,10 @@ const CODE_LIFETIME_MS = 2 * 60 * 60 * 1000;
 // chỉ nhập ở phòng Polaroid. Không cấp mã ở chi nhánh không có phòng đúng loại để nhập.
 async function requireCounterRoom(branch, room, pack) {
   const polaroid = isPolaroidSize(pack.printSize);
-  const kind = polaroid ? "Polaroid" : "photobooth";
+  const kind = polaroid ? "Selfbooth" : "photobooth";
   // Older rooms without a kind are photobooths.
   if (room && (room.kind === "polaroid") !== polaroid)
-    fail(400, polaroid ? "Gói Polaroid chỉ dùng ở phòng Polaroid." : "Phòng Polaroid chỉ nhận mã của gói Polaroid.");
+    fail(400, polaroid ? "Gói Selfbooth chỉ dùng ở phòng Selfbooth." : "Phòng Selfbooth chỉ nhận mã của gói Selfbooth.");
   if (!await Room.exists({ branch, active: true, kind: polaroid ? "polaroid" : { $ne: "polaroid" } }))
     fail(400, `Chi nhánh “${branch}” chưa có phòng ${kind} đang hoạt động để nhập mã. Vui lòng chọn đúng chi nhánh hoặc kiểm tra loại phòng trong Quản lý máy.`);
 }

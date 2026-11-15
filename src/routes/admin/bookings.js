@@ -156,7 +156,7 @@ bookingsRouter.patch("/bookings/:id", async (req, res) => {
   if (d.printed !== undefined && b.status !== "completed")
     fail(400, "Phiên chụp chưa hoàn tất.");
   if (d.collected && (b.paid || b.source !== "polaroid" || !["checked_in", "completed"].includes(b.status)))
-    fail(409, b.paid ? "Đơn này đã thu tiền." : "Chỉ ghi nhận thu tiền ở quầy cho lượt chụp phòng Polaroid.");
+    fail(409, b.paid ? "Đơn này đã thu tiền." : "Chỉ ghi nhận thu tiền ở quầy cho lượt chụp phòng Selfbooth.");
   const { paymentReceived, collected, ...changes } = d;
   if (collected) {
     changes.paid = true;

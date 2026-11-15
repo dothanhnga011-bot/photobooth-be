@@ -94,7 +94,7 @@ const resources = {
       // nhất 1 tấm Instax.
       if (isPolaroidSize(pack.printSize)) {
         if (!(pack.prints >= 1))
-          ctx.addIssue({ code: "custom", path: ["prints"], message: "gói Polaroid kèm ít nhất 1 tấm Instax" });
+          ctx.addIssue({ code: "custom", path: ["prints"], message: "gói Selfbooth kèm ít nhất 1 tờ in" });
         return;
       }
       if (pack.shots < 1)

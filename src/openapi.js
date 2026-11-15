@@ -371,11 +371,11 @@ export const openapi = {
           description: { type: "string", example: "5 phút, 1 tờ in" },
           price: int("Giá (VND)", { example: 60000 }),
           duration: int("Thời gian chụp (phút, 1–30)", { example: 5 }),
-          shots: int("Số lần bấm dây chụp tối đa (1–40); gói Polaroid chụp không giới hạn", { example: 12 }),
+          shots: int("Số lần bấm dây chụp tối đa (1–40); gói Selfbooth chụp không giới hạn", { example: 12 }),
           countdownSeconds: int("Trường tương thích kiosk cũ; giao diện hiện tại dùng dây bấm", { example: 10 }),
           selectCount: int("Số ảnh khách chọn để ghép khung trên máy chụp (1–12)", { example: 4 }),
           printSize: enumOf(["full", "strip", "instax", "large"]),
-          prints: int("Số tờ in kèm gói (0–20); gói Polaroid (instax): số tấm Instax, ít nhất 1", { example: 1 }),
+          prints: int("Số tờ in kèm gói (0–20); gói Selfbooth (instax): số tấm Instax, ít nhất 1", { example: 1 }),
           branches: { type: "array", items: { type: "string" }, description: "Chi nhánh áp dụng; để trống = mọi chi nhánh" },
           active: { type: "boolean", example: true },
         },
@@ -1106,7 +1106,7 @@ export const openapi = {
       post: {
         tags: ["Máy chụp (kiosk)"],
         deprecated: true,
-        summary: "Khôi phục lượt Polaroid cũ đã mở trước khi chuyển sang mã chụp",
+        summary: "Khôi phục lượt Selfbooth cũ đã mở trước khi chuyển sang mã chụp",
         description: "Chỉ phát lại requestKey của lượt source = polaroid còn checked_in và có captureSession. " +
           "Không tạo lượt mới: trả 410, yêu cầu mua mã đã thanh toán tại quầy rồi dùng /api/kiosk/claim.",
         requestBody: body({
@@ -1704,7 +1704,7 @@ export const openapi = {
         summary: "Lấy mã máy in DNP của phòng Photobooth — dùng cho File cài máy in",
         description:
           "Lễ tân (quyền Cài máy chụp) và quản trị. Mã (hạn 1 năm) để chương trình in trên mini PC của phòng nhận lệnh in " +
-          "của đúng phòng này ở /api/print-agent/*: tờ to in nguyên tờ, tờ nhỏ qua hàng in cắt đôi 2 inch. Phòng Polaroid: 409.",
+          "của đúng phòng này ở /api/print-agent/*: tờ to in nguyên tờ, tờ nhỏ qua hàng in cắt đôi 2 inch. Phòng Selfbooth: 409.",
         security: loggedIn,
         parameters: [pathParam("id", "Mã phòng")],
         responses: {
@@ -1835,7 +1835,7 @@ export const openapi = {
         security: loggedIn,
         requestBody: body({
           name: str("Tên chủ đề"),
-          kind: { type: "string", enum: ["photobooth", "polaroid"], description: "Chủ đề của phòng Photobooth (mặc định) hay phòng Polaroid" },
+          kind: { type: "string", enum: ["photobooth", "polaroid"], description: "Chủ đề của phòng Photobooth (mặc định) hay phòng Selfbooth" },
         }, ["name"]),
         responses: { ...ok("Danh sách", { type: "array", items: { type: "object" } }, 201), ...errors(400, 401, 403, 409) },
       },

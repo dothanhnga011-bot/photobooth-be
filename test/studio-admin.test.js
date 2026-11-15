@@ -361,7 +361,7 @@ test("guests can buy a session at the kiosk with cash; test mode skips payment w
   const { token } = (await staff.post(`/api/admin/rooms/${room._id}/device`).expect(200)).body;
   const sale = (extra) => ({ device: token, package: String(pack._id), requestKey: randomUUID(), ...extra });
   const refused = await request(app).post("/api/kiosk/sale").send(sale({ bills: [{ amount: 100000 }] })).expect(403);
-  assert.match(refused.body.message, /Polaroid/);
+  assert.match(refused.body.message, /Selfbooth/);
   // Phòng photobooth chưa bật chế độ thử: không bỏ qua bước đút tiền.
   await admin.put(`/api/admin/rooms/${room._id}`).send({
     name: "Máy 1", description: "", branch: "Bắc Giang", kind: "photobooth", paymentTest: false, active: true,
@@ -436,7 +436,7 @@ test("Instax packages are timed like Selfbooth: unlimited shots, the package's m
   const saved = (await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, prints: 2, shots: 30 }).expect(200)).body;
   assert.deepEqual([saved.prints, saved.shots, saved.duration], [2, 0, 7]);
   const none = await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, prints: 0 }).expect(400);
-  assert.match(none.body.message, /ít nhất 1 tấm Instax/);
+  assert.match(none.body.message, /ít nhất 1 tờ in/);
   const long = (await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, prints: 1, duration: 22 }).expect(200)).body;
   assert.deepEqual([long.duration, long.prints, long.shots], [22, 1, 0]);
   await admin.put(`/api/admin/packages/${pack._id}`).send({ ...base, prints: 1 }).expect(200);
@@ -708,13 +708,13 @@ test("the counter sells Polaroid packages as codes; a code opens only in its kin
     assert.match(activated.code, /^\d{6}$/);
     assert.deepEqual([(await Booking.findById(draft._id)).printSize, (await Booking.findById(draft._id)).captureDuration], ["instax", 7]);
     assert.match((await sell({ package: String(small._id), room: String(room._id) }).expect(400)).body.message,
-      /Gói Polaroid chỉ dùng ở phòng Polaroid/);
-    assert.match((await sell({ package: String(small._id), branch: "Hà Nội" }, admin).expect(400)).body.message, /chưa có phòng Polaroid/);
+      /Gói Selfbooth chỉ dùng ở phòng Selfbooth/);
+    assert.match((await sell({ package: String(small._id), branch: "Hà Nội" }, admin).expect(400)).body.message, /chưa có phòng Selfbooth/);
     assert.match((await sell({ package: String(pack._id), room: String(polaroidRoom._id) }).expect(400)).body.message,
-      /Phòng Polaroid chỉ nhận mã của gói Polaroid/);
+      /Phòng Selfbooth chỉ nhận mã của gói Selfbooth/);
 
     // Nhầm phòng: báo rõ, mã vẫn còn; đúng phòng Polaroid thì mở lượt chụp Instax.
-    assert.match((await claim(code.code, room).expect(400)).body.message, /dành cho phòng Polaroid/);
+    assert.match((await claim(code.code, room).expect(400)).body.message, /dành cho phòng Selfbooth/);
     assert.equal((await Booking.findById(code._id)).status, "confirmed", "the code is not used up in the wrong room");
     const opened = (await claim(code.code, polaroidRoom).expect(200)).body;
     assert.equal(opened.booking.printSize, "instax");

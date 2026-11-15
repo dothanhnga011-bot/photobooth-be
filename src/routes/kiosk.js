@@ -134,7 +134,7 @@ kioskRouter.post("/sale", sensitive({ key: kioskDeviceKey }), async (req, res) =
   }
   await rejectArchivedSale(d.requestKey);
   if (room.kind === "polaroid")
-    fail(403, "Phòng Polaroid không thu tiền tại máy — khách chọn layout rồi trả tiền ở quầy.");
+    fail(403, "Phòng Selfbooth không thu tiền tại máy — khách mua gói và trả tiền ở quầy.");
   if (d.skip && !room.paymentTest)
     fail(403, "Phòng chưa bật chế độ thử (bỏ qua đút tiền). Bật ở Quản trị → Quản lý máy.");
   const pack = await Package.findOne({ _id: d.package, active: true });
@@ -142,7 +142,7 @@ kioskRouter.post("/sale", sensitive({ key: kioskDeviceKey }), async (req, res) =
   if (pack.branches?.length && !pack.branches.includes(room.branch))
     fail(400, `Gói “${pack.name}” không áp dụng tại chi nhánh ${room.branch}.`);
   if (isPolaroidSize(pack.printSize))
-    fail(400, "Gói Polaroid bán ở quầy cho phòng Polaroid, không bán ở phòng photobooth.");
+    fail(400, "Gói Selfbooth bán ở quầy cho phòng Selfbooth, không bán ở phòng photobooth.");
   const least = minSheets(pack);
   const sheets = d.prints ?? least;
   if (sheets < least)
@@ -221,14 +221,14 @@ kioskRouter.post("/polaroid", sensitive({ key: kioskDeviceKey }), async (req, re
   if (existing) {
     if (String(existing.room) !== String(room._id)) fail(409, "Mã giao dịch đã dùng ở máy khác.");
     if (existing.source !== "polaroid" || existing.status !== "checked_in")
-      fail(410, "Phòng Polaroid dùng mã chụp đã thanh toán tại quầy.");
+      fail(410, "Phòng Selfbooth dùng mã chụp đã thanh toán tại quầy.");
     if (!existing.captureSession) fail(409, "Lượt chụp này đã kết thúc.");
     return res.json(saleSession(existing, room, existing.captureSession));
   }
   await rejectArchivedSale(d.requestKey);
   if (room.kind !== "polaroid")
     fail(403, "Đây là phòng photobooth — khách chọn Nhập mã hoặc Tiền mặt. Đổi loại phòng ở Quản trị → Quản lý máy.");
-  fail(410, "Phòng Polaroid dùng mã chụp đã thanh toán tại quầy. Vui lòng tải lại kiosk rồi nhập mã 6 số.");
+  fail(410, "Phòng Selfbooth dùng mã chụp đã thanh toán tại quầy. Vui lòng tải lại kiosk rồi nhập mã 6 số.");
 });
 const saleSession = (b, room, sessionId) => ({
   flip: room.flip || "device",
@@ -304,7 +304,7 @@ kioskRouter.post("/claim", sensitive({ key: kioskDeviceKey }), async (req, res) 
     if (other?.status === "confirmed" && expiresAt > new Date() && isPolaroidSize(other.printSize) !== polaroidRoom)
       fail(400, polaroidRoom
         ? "Mã này dành cho phòng Photobooth. Mời bạn sang phòng Photobooth để chụp, hoặc nhờ nhân viên đổi mã."
-        : "Mã này dành cho phòng Polaroid. Mời bạn sang phòng Polaroid để chụp, hoặc nhờ nhân viên đổi mã.");
+        : "Mã này dành cho phòng Selfbooth. Mời bạn sang phòng Selfbooth để chụp, hoặc nhờ nhân viên đổi mã.");
     fail(
       400,
       "Mã chụp không đúng, chưa thanh toán hoặc đã hết hạn 2 giờ.",

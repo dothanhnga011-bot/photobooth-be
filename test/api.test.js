@@ -306,7 +306,7 @@ test("counter codes require an active photobooth in the selected branch, includi
         const requestKey = randomUUID();
         const rejected = await admin.post(path).send({ package: String(pack._id), ...target, requestKey,
           expectedTotal: pack.price, paymentReceived: true, paymentMethod: "cash" }).expect(400);
-        assert.match(rejected.body.message, /photobooth|Polaroid/);
+        assert.match(rejected.body.message, /photobooth|Selfbooth/);
         assert.equal(await Booking.countDocuments({ requestKey }), 0, "rejection cannot create a paid sale or draft");
       }
     }
