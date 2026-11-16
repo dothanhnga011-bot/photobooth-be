@@ -32,6 +32,12 @@ export const config = {
     prefix: process.env.R2_PREFIX || "media/",
     limitGB: Number(process.env.R2_STORAGE_LIMIT_GB || 10),
   },
+  // Tuỳ chọn: token Cloudflare (quyền Account Analytics: Read) để trang Dung lượng ảnh đọc đúng số GB-tháng R2
+  // Cloudflare tính tiền (kể cả những ngày trước khi máy chủ bắt đầu tự đo). Tài khoản mặc định = R2_ACCOUNT_ID.
+  cloudflare: {
+    apiToken: process.env.CLOUDFLARE_API_TOKEN || "",
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID || "",
+  },
   // Trang thử API (Swagger) ở /api/docs và /api/openapi.json: ẩn mặc định, đặt API_DOCS=true để mở.
   apiDocs: process.env.API_DOCS === "true",
   frontendDist: process.env.FRONTEND_DIST

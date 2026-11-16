@@ -19,6 +19,7 @@ import {
   MEDIA_TTL_MS,
 } from "../src/services/media.js";
 import { getStorageSummary } from "../src/services/media-storage.js";
+import { resetR2PeakMemory } from "../src/services/r2-billing.js";
 import { whenPrintSourcesIdle } from "../src/services/print-source.js";
 import { purgeStaleOrphans } from "../src/services/orphans.js";
 import {
@@ -673,6 +674,8 @@ test("combined storage includes paginated R2 metadata and legacy bytes, keeping 
     status: "printed",
   });
   calls = [];
+  await Setting.deleteMany({ key: "r2:daily-peaks" });
+  resetR2PeakMemory();
   const summary = await getStorageSummary({ now });
   assert.equal(summary.media.bytes, 90);
   assert.equal(summary.media.files, 6);
@@ -680,6 +683,12 @@ test("combined storage includes paginated R2 metadata and legacy bytes, keeping 
   assert.equal(summary.r2.usedBytes, 79);
   assert.equal(summary.r2.files, 5);
   assert.equal(summary.r2.quota.limitBytes, 10_000_000_000);
+  // R2 tính tiền theo GB-tháng: hôm nay được ghi làm ngày có đỉnh 79 byte, và có số tháng này.
+  assert.equal(summary.r2.billing.freeGBMonths, 10);
+  assert.equal(summary.r2.billing.daily.at(-1).bytes, 79);
+  assert.equal(summary.r2.billing.level, "normal");
+  const peaks = (await Setting.collection.findOne({ key: "r2:daily-peaks" })).value.days;
+  assert.equal(peaks[now.toISOString().slice(0, 10)], 79);
   assert.deepEqual(summary.media.groups.thumbnails, { bytes: 7, files: 1 });
   assert.deepEqual(summary.expired, {
     bytes: 37,

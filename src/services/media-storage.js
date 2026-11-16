@@ -13,6 +13,7 @@ export const isStaleOrphan = (file, referenced, now = Date.now()) =>
   Number.isFinite(file.modified) &&
   file.modified <= now - MEDIA_TTL_MS - ORPHAN_GRACE_MS;
 import { BYTES_PER_GB, isR2File, r2Configured, readR2Inventory } from "./r2.js";
+import { readR2Billing, recordR2Peak } from "./r2-billing.js";
 
 export const BYTES_PER_MB = 1024 * 1024;
 export const STORAGE_SETTING_KEY = "media-storage";
@@ -333,6 +334,13 @@ export async function getStorageSummary({
     r2LimitGB === null ? null : (r2LimitGB * BYTES_PER_GB) / BYTES_PER_MB,
     r2Available ? r2Sizes.total.bytes : null,
   );
+  // R2 tính tiền theo GB-tháng (trung bình dung lượng đỉnh mỗi ngày), không theo số đang lưu lúc này.
+  let r2Billing = null;
+  if (r2Available) {
+    await recordR2Peak(r2Sizes.total.bytes, now).catch(() => {});
+    r2Billing = await readR2Billing({ now, currentBytes: r2Sizes.total.bytes, limitGBMonths: r2LimitGB ?? undefined })
+      .catch(() => null);
+  }
   return {
     checkedAt: now.toISOString(),
     bytesPerMB: BYTES_PER_MB,
@@ -372,6 +380,7 @@ export async function getStorageSummary({
       files: r2Available ? r2Sizes.total.files : null,
       usedBytes: r2Available ? r2Sizes.total.bytes : null,
       error: r2Error,
+      billing: r2Billing,
       quota: {
         ...r2Quota,
         limitGB: r2Quota.limitMB === null ? null : r2LimitGB,

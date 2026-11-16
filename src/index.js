@@ -54,6 +54,9 @@ try {
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 66_000;
   startMediaCleanup();
+  // Đo dung lượng R2 mỗi giờ để tính GB-tháng (Cloudflare tính tiền theo đỉnh mỗi ngày).
+  const { startR2UsageSampler } = await import("./services/r2-billing.js");
+  startR2UsageSampler();
   const { startSessionSweeper, resumePrintSources } = await import("./services/capture.js");
   startSessionSweeper();
   // Nguồn in đang chờ của máy chủ trước (triển khai mới, hết RAM) đã mất: xếp lại sau 1 phút, khi
