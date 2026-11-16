@@ -139,6 +139,8 @@ export async function readR2Billing({ now = new Date(), currentBytes = null, lim
     periodDays: R2_PERIOD_DAYS,
     freeGBMonths: R2_FREE_GB_MONTHS,
     pricePerGBMonth: R2_PRICE_PER_GB_MONTH,
+    // Trang quản trị quy tiền ra đồng (16/11 chủ tiệm). Cloudflare tính USD; tỉ giá ước tính, đổi được trên Render.
+    vndPerUsd: config.usdVndRate,
     limitGBMonths: limit,
     monthToDate: round(monthToDate),
     projected: round(projected),

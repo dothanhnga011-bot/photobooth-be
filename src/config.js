@@ -38,6 +38,9 @@ export const config = {
     apiToken: process.env.CLOUDFLARE_API_TOKEN || "",
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID || "",
   },
+  // Tỉ giá ước tính để trang Dung lượng ảnh quy tiền R2 (USD) ra tiền đồng; giá bán USD của ngân hàng khoảng
+  // 26.130–26.410 đ (giữa 2026). Đổi bằng biến USD_VND_RATE trên Render khi tỉ giá thay đổi nhiều.
+  usdVndRate: Number(process.env.USD_VND_RATE) > 0 ? Number(process.env.USD_VND_RATE) : 26_400,
   // Trang thử API (Swagger) ở /api/docs và /api/openapi.json: ẩn mặc định, đặt API_DOCS=true để mở.
   apiDocs: process.env.API_DOCS === "true",
   frontendDist: process.env.FRONTEND_DIST

@@ -45,6 +45,7 @@ test("month to date = sum of daily peaks / 30; the projection keeps today's size
   assert.equal(billing.projected, Math.round(((40 + 61.9 + 61.9 * 14) / 30) * 1e4) / 1e4);
   assert.ok(Math.abs(billing.projectedCostUSD - (billing.projected - 10) * 0.015) < 0.0002, String(billing.projectedCostUSD));
   assert.equal(billing.monthToDateCostUSD, 0);
+  assert.equal(billing.vndPerUsd, 26_400, "the admin page shows the cost in đồng at this estimated rate");
   assert.deepEqual([billing.measuredDays, billing.missingDays, billing.firstMeasured], [2, 14, "2026-11-15"]);
   assert.equal(billing.level, "normal", "judged by what is billed so far, not by the month-end projection");
   assert.equal(billing.source, "recorded");
