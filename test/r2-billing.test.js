@@ -43,14 +43,25 @@ test("month to date = sum of daily peaks / 30; the projection keeps today's size
   assert.equal(billing.monthToDate, Math.round(((40 + 61.9) / 30) * 1e4) / 1e4);
   // 14 ngày còn lại × 61,9 GB / 30.
   assert.equal(billing.projected, Math.round(((40 + 61.9 + 61.9 * 14) / 30) * 1e4) / 1e4);
-  assert.equal(billing.projectedCostUSD, Math.round((billing.projected - 10) * 0.015 * 100) / 100);
+  assert.ok(Math.abs(billing.projectedCostUSD - (billing.projected - 10) * 0.015) < 0.0002, String(billing.projectedCostUSD));
   assert.equal(billing.monthToDateCostUSD, 0);
   assert.deepEqual([billing.measuredDays, billing.missingDays, billing.firstMeasured], [2, 14, "2026-11-15"]);
-  assert.equal(billing.level, "warning", "under the free 10 GB-month so far, over it by the end of the month");
+  assert.equal(billing.level, "normal", "judged by what is billed so far, not by the month-end projection");
   assert.equal(billing.source, "recorded");
   assert.equal(billing.usagePercent, Math.round((billing.monthToDate / 10) * 100 * 100) / 100);
   // Không phải 61,9 / 10 GB = 619 % như trước.
   assert.ok(billing.usagePercent < 100);
+});
+
+test("the level follows GB-months billed so far: a reminder from 80 % of the free tier, critical from 100 %", async () => {
+  // 1–9/11 mỗi ngày đỉnh 27 GB → 8,1 GB-tháng (81 %), hôm nay thêm 30 GB → 9,1 (91 %).
+  for (let d = 1; d <= 9; d++) await recordR2Peak(27 * GB, new Date(Date.UTC(2026, 10, d, 12)));
+  const warning = await readR2Billing({ now: new Date("2026-11-10T08:00:00Z"), currentBytes: 30 * GB });
+  assert.deepEqual([warning.monthToDate, warning.level, warning.monthToDateCostUSD], [9.1, "warning", 0]);
+  // Thêm 10, 11/11 đỉnh 30 GB và hôm nay 30 GB → 333 GB-ngày = 11,1 GB-tháng: vượt 1,1 × 0,015 ≈ 0,02 USD.
+  for (const d of [10, 11]) await recordR2Peak(30 * GB, new Date(Date.UTC(2026, 10, d, 12)));
+  const critical = await readR2Billing({ now: new Date("2026-11-12T08:00:00Z"), currentBytes: 30 * GB });
+  assert.deepEqual([critical.monthToDate, critical.level, critical.monthToDateCostUSD], [11.1, "critical", 0.0165]);
 });
 
 test("a small bucket stays in the free tier and the level is normal", async () => {
