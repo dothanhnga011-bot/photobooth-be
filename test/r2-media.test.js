@@ -1134,7 +1134,7 @@ test("a booth uploads the camera original straight to storage and commits only i
     // Tokens only fit their own session and photo key.
     const { body: second } = await ticket("direct-photo-2").expect(200);
     await commit("direct-photo-3", second.upload.stored).expect(422);
-    await commit("direct-photo-2", second.upload.stored.slice(0, -1) + "A").expect(422);
+    await commit("direct-photo-2", second.upload.stored.slice(0, -1) + (second.upload.stored.endsWith("A") ? "B" : "A")).expect(422);
     await commit("direct-photo-2", "not-a-token").expect(422);
     // Not uploaded yet, or uploaded with private metadata: refused (422) so the booth sends it
     // the usual way; the unusable upload is removed.
@@ -1260,8 +1260,9 @@ test("preview first on R2: the album shows the preview at once, then the camera 
     const file = puts.at(-1).file;
     objects.set(file.slice(3), { bytes: Buffer.from(cleaned), type: "image/jpeg", modified: Date.now() });
     calls = [];
+    const invalidStored = ticket.upload.stored.slice(0, -1) + (ticket.upload.stored.endsWith("A") ? "B" : "A");
     await request(app).post(`${albumPath}/original`)
-      .send({ clientKey: "early-photo-1", stored: ticket.upload.stored.slice(0, -1) + "A" }).expect(422);
+      .send({ clientKey: "early-photo-1", stored: invalidStored }).expect(422);
     assert.deepEqual((await request(app).post(`${albumPath}/original`)
       .send({ clientKey: "early-photo-1", stored: ticket.upload.stored }).expect(200)).body, { attached: true });
     const photo = (await Booking.findById(b._id)).photos[0];

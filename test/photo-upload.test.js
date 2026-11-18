@@ -18,7 +18,7 @@ before(async () => {
   config.secret = "isolated-photo-upload-test-secret-1234567890";
   config.dnpPrinter = "";
   memory = await MongoMemoryServer.create();
-  await mongoose.connect(memory.getUri());
+  await mongoose.connect(memory.getUri(), { monitorCommands: true });
   await Booking.init();
   const width = 4032, height = 3024;
   const pixels = Buffer.alloc(width * height * 3);
@@ -238,7 +238,16 @@ test("preview first: the album shows the photo from the booth preview at once, t
   await request(app).post(`${albumPath}/original-url`).send({ clientKey: "never-taken-01", size: camera.length }).expect(410);
   const attach = () => request(app).post(`${albumPath}/original`)
     .set("Content-Type", "image/jpeg").set("X-Photo-Key", "preview-first-01").send(camera);
-  assert.deepEqual((await attach().expect(200)).body, { attached: true });
+  const client = mongoose.connection.getClient();
+  let reads = 0;
+  const count = event => {
+    if (event.commandName === 'find' && event.command.find === 'bookings' &&
+        event.command.projection?.photos?.$elemMatch?.clientKey === 'preview-first-01') reads++;
+  };
+  client.on('commandStarted', count);
+  try { assert.deepEqual((await attach().expect(200)).body, { attached: true }); }
+  finally { client.off('commandStarted', count); }
+  assert.equal(reads, 1, 'reuse the authenticated photo snapshot instead of another database round trip');
   saved = (await Booking.findById(b._id)).photos[0];
   assert.notEqual(saved.file, saved.previewFile);
   assert.deepEqual(await readMedia(saved.file), camera, "the camera file is kept byte for byte");
@@ -255,4 +264,63 @@ test("preview first: the album shows the photo from the booth preview at once, t
   assert.deepEqual([print.info.width, print.info.height], [3000, 2000]);
   assert.ok(print.data[2] > 150 && print.data[0] < 90, "the print source comes from the camera original");
   assert.equal((await request(app).get(`/api/albums/${b.accessToken}`).expect(200)).body.photos[0].originalPending, undefined);
+});
+
+test('an auto-finished session attaches the requested original, even when its first photo is already complete', async () => {
+  const fixture = () => Booking.create({
+    code: randomUUID(), accessToken: randomUUID(), status: 'checked_in',
+    captureEndsAt: new Date(Date.now() - 5 * 60000),
+    photos: [
+      { clientKey: 'already-attached', file: 'first-camera.jpg', kind: 'original', number: 1 },
+      { clientKey: 'attach-this-photo', file: 'second-preview.jpg', previewFile: 'second-preview.jpg',
+        kind: 'original', number: 2, originalPending: true, originalMirrored: true },
+    ],
+  });
+  const forUrl = await fixture();
+  // GridFS cannot presign: the requested photo still needs its original, so this
+  // must be 404 (use the binary fallback), never { saved: true } from photo one.
+  await request(app).post(`/api/albums/${forUrl.accessToken}/photos/original-url`)
+    .send({ clientKey: 'attach-this-photo', size: jpeg.length }).expect(404);
+  const b = await fixture();
+  const response = await upload(`/api/albums/${b.accessToken}/photos/original`, 'attach-this-photo').expect(200);
+  assert.deepEqual(response.body, { attached: true });
+  const saved = await Booking.findById(b._id);
+  assert.equal(saved.status, 'completed');
+  assert.equal(saved.photos[0].file, 'first-camera.jpg');
+  assert.equal(saved.photos[1].originalPending, undefined);
+  assert.equal(saved.photos[1].mirrored, true);
+  assert.deepEqual(await readMedia(saved.photos[1].file), jpeg);
+  await whenPrintSourcesIdle();
+});
+
+test('opt-in delta acknowledgements contain only the requested photo, including a retry; legacy clients still get the whole album', async t => {
+  const b = await booking('checked_in');
+  const captureToken = jwt.sign({ type: 'capture', booking: String(b._id) }, config.secret);
+  const preview = await solid(1600, 1067, '#b79b87');
+  const post = key => request(app).post('/api/kiosk/photo')
+    .set('Content-Type', 'image/jpeg').set('X-Photo-Key', key).set('X-Photo-Original', 'later')
+    .set('X-Capture-Token', captureToken);
+  await post('delta-photo-01').send(preview).expect(200);
+  const second = await post('delta-photo-02').set('X-Photo-Reply', 'delta').send(preview).expect(200);
+  assert.deepEqual(second.body.photos.map(p => [p.clientKey, p.number]), [['delta-photo-02', 2]]);
+  const retry = await post('delta-photo-01').set('X-Photo-Reply', 'delta').send(preview).expect(200);
+  assert.deepEqual(retry.body.photos.map(p => [p.clientKey, p.number]), [['delta-photo-01', 1]]);
+  const legacy = await post('delta-photo-01').send(preview).expect(200);
+  assert.equal(legacy.body.photos.length, 2);
+  await Booking.updateOne({ _id: b._id }, { status: 'completed' });
+  const url = `/api/albums/${b.accessToken}/photos`;
+  const phone = await upload(url, 'delta-phone-03').set('X-Photo-Reply', 'delta').expect(201);
+  assert.deepEqual(phone.body.photos.map(p => [p.clientKey, p.number]), [['delta-phone-03', 3]]);
+  assert.equal((await request(app).get(`/api/albums/${b.accessToken}`).expect(200)).body.photos.length, 3);
+  assert.equal((await Booking.findById(b._id)).photos.length, 3);
+  await Booking.updateOne({ _id: b._id }, { $push: { photos: { $each: Array.from({length:100},(_,i)=>({
+    clientKey:`seed-photo-${i}`,file:`synthetic-${i}.jpg`,kind:'original',number:i+4,originalPending:true,
+  })) } } });
+  const whole=await upload(url,'delta-phone-03').expect(201);
+  const delta=await upload(url,'delta-phone-03').set('X-Photo-Reply','delta').expect(201);
+  const fullBytes=Buffer.byteLength(whole.text),deltaBytes=Buffer.byteLength(delta.text);
+  assert.equal(whole.body.photos.length,103);assert.equal(delta.body.photos.length,1);
+  assert.ok(deltaBytes<fullBytes*.1,'only metadata for the confirmed photo crosses the return path');
+  t.diagnostic(JSON.stringify({case:'103-photo acknowledgement',fullBytes,deltaBytes,reductionPct:100*(1-deltaBytes/fullBytes)}));
+  await whenPrintSourcesIdle();
 });

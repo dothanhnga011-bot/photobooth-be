@@ -3,7 +3,7 @@ import { finishCapture, isOverdue } from "../services/capture.js";
 import { albumMediaExpiry, mediaLinks, photoExpiry, photoLinks } from "../services/media.js";
 import { fail } from "./validation.js";
 
-export const publicBooking = (b) => ({
+export const publicBooking = (b, { photoKey } = {}) => ({
   ...(b.toObject ? b.toObject() : b),
   accessToken: undefined,
   captureSession: undefined,
@@ -27,7 +27,8 @@ export const publicBooking = (b) => ({
       originalPending: p.originalPending ? true : undefined,
       // Có nguồn in 3000 px riêng (ảnh mới); ảnh cũ in từ ảnh gốc.
       printSource: Boolean(p.printFile),
-    })),
+    }))
+    .filter(p => photoKey === undefined || p.clientKey === photoKey),
   // Video tua nhanh máy chụp quay trong lúc chụp (tải ở /albums/:token/video).
   video: b.video?.file ? { mimeType: b.video.mimeType, size: b.video.size } : undefined,
   // Ảnh đã ghép khung ở máy chụp (tải ở /albums/:token/composite).
@@ -37,8 +38,8 @@ export const publicBooking = (b) => ({
 });
 // Album page responses also carry each photo's storage links (see photoLinks): the gallery
 // and editor load straight from R2 instead of one server round trip per image.
-export async function albumBooking(b, now = Date.now()) {
-  const json = publicBooking(b);
+export async function albumBooking(b, now = Date.now(), options = {}) {
+  const json = publicBooking(b, options);
   const byId = new Map(b.photos.map((p) => [String(p._id), p]));
   json.photos = await Promise.all(json.photos.map(async (p) => {
     const links = await photoLinks(byId.get(String(p.id)), now);

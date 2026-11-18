@@ -6,7 +6,7 @@ import { saveMedia, deleteMedia, readMedia, photoExpiry, MEDIA_TTL_MS } from "./
 import mongoose from "mongoose";
 import { mediaReference } from "./r2.js";
 import { cleanJpegMetadata } from "./jpeg-metadata.js";
-import { saveImageTask } from "./image-save-queue.js";
+import { saveImageTask, savePreviewTask } from "./image-save-queue.js";
 import { schedulePrintSource } from "./print-source.js";
 import { schedulePhotoDownload } from "./photo-download-warm.js";
 import { inspectStoredOriginal } from "./direct-upload.js";
@@ -182,9 +182,10 @@ async function previewOnlyTasks(preview) {
 // The camera original for a photo the album already shows from its preview (preview first,
 // original later). storedOriginal: the booth uploaded it straight to storage; buffer: sent
 // through the server. Returns false when the photo already has its original (a retry).
-export async function attachOriginal(bookingId, clientKey, { storedOriginal, buffer } = {}) {
-  const b = await Booking.findById(bookingId).select({ photos: { $elemMatch: { clientKey } } });
-  const photo = b?.photos?.[0];
+export async function attachOriginal(bookingId, clientKey, { storedOriginal, buffer, precheck } = {}) {
+  const b = precheck || await Booking.findById(bookingId).select({ photos: { $elemMatch: { clientKey } } });
+  // album() may have just auto-finished the session and returned every photo.
+  const photo = b?.photos?.find(p => p.clientKey === clientKey);
   if (!photo || photo.deleted) throw captureError(410, "Ảnh không còn trong album.");
   if (!photo.originalPending) return false;
   let file = storedOriginal, meta;
@@ -242,7 +243,7 @@ export function appendCapture(
   // Start storage independently of the commit lock. Reserve the commit's place
   // synchronously so finishCapture still waits for all already accepted photos,
   // and photos keep their request order even when a later R2 write finishes first.
-  const stored = saveImageTask(async () => {
+  const stored = (previewOnly ? savePreviewTask : saveImageTask)(async () => {
     // The database is far from the server on the free plans: callers that already loaded
     // the session (status, end time and this clientKey's photo) pass it to save a round trip.
     const b = precheck || await Booking.findById(bookingId).select({

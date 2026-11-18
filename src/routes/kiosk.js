@@ -359,7 +359,8 @@ kioskRouter.post("/photo/upload-url", async (req, res) => {
   if (!directUploadsEnabled()) fail(404, "Kho ảnh chưa hỗ trợ tải thẳng.");
   const { b } = await captureBooking(d.captureToken, { authOnly: true, photoKey: d.clientKey });
   // Already saved (a lost reply): hand back the session instead of a second upload.
-  if (b.photos?.length) return res.json({ saved: true, booking: publicBooking(await Booking.findById(b._id)) });
+  if (b.photos?.some(p => p.clientKey === d.clientKey)) return res.json({ saved: true, booking: publicBooking(await Booking.findById(b._id),
+    req.get('X-Photo-Reply') === 'delta' ? { photoKey: d.clientKey } : {}) });
   if (b.status !== "checked_in" || !b.captureEndsAt || new Date(b.captureEndsAt) <= new Date())
     fail(409, "Phiên chụp đã kết thúc.");
   res.json({ upload: await createDirectUpload(b._id, d.clientKey, d.size) });
@@ -379,6 +380,7 @@ kioskRouter.post("/photo", photoBody, async (req, res) => {
         previewOnly: Boolean(d.later),
         storedOriginal: storedOriginal(b._id, d),
       })),
+      req.get('X-Photo-Reply') === 'delta' ? { photoKey: d.clientKey } : {},
     ),
   );
 });

@@ -369,7 +369,8 @@ albumsRouter.post("/:token/photos/upload-url", async (req, res) => {
     status: 1, captureEndsAt: 1, photos: { $elemMatch: { clientKey: d.clientKey } },
   });
   // Already saved (a lost reply): hand back the album instead of a second upload.
-  if (b.photos?.length) return res.json({ saved: true, booking: await albumBooking(await album(req)) });
+  if (b.photos?.some(p => p.clientKey === d.clientKey)) return res.json({ saved: true, booking: await albumBooking(await album(req), Date.now(),
+    req.get('X-Photo-Reply') === 'delta' ? { photoKey: d.clientKey } : {}) });
   if (b.status !== "completed") fail(409, "Phiên chụp đã kết thúc.");
   res.json({ upload: await createDirectUpload(b._id, d.clientKey, d.size) });
 });
@@ -386,7 +387,7 @@ albumsRouter.post("/:token/photos", photoBody, async (req, res) => {
     { clientKey: d.clientKey, originalName: d.name, imported: true, mirrored: d.mirrored, precheck: b,
       preview: d.preview, previewOnly: Boolean(d.later), storedOriginal: storedOriginal(b._id, d) },
   ));
-  res.status(201).json(await albumBooking(saved));
+  res.status(201).json(await albumBooking(saved, Date.now(), req.get('X-Photo-Reply') === 'delta' ? { photoKey: d.clientKey } : {}));
 });
 // Album phòng Selfbooth (khổ Instax): khách xoá ảnh như bên Selfbooth — ảnh bị ẩn rồi được dọn cùng ảnh
 // hết hạn; các ảnh còn lại đánh số lại 1, 2, 3… trong cùng một lần ghi (không mất ảnh khi điện thoại đang
@@ -413,7 +414,8 @@ albumsRouter.delete("/:token/photos", async (req, res) => {
 albumsRouter.post("/:token/photos/original-url", async (req, res) => {
   const d = directUploadRequest().parse(req.body);
   const b = await album(req, { status: 1, captureEndsAt: 1, photos: { $elemMatch: { clientKey: d.clientKey } } });
-  const photo = b.photos?.[0];
+  // Auto-finishing an overdue session returns the full photo array.
+  const photo = b.photos?.find(p => p.clientKey === d.clientKey);
   if (!photo || photo.deleted) fail(410, "Ảnh không còn trong album.");
   if (!photo.originalPending) return res.json({ saved: true });
   if (!directUploadsEnabled()) fail(404, "Kho ảnh chưa hỗ trợ tải thẳng.");
@@ -421,12 +423,12 @@ albumsRouter.post("/:token/photos/original-url", async (req, res) => {
 });
 // 2) Gắn ảnh gốc: JSON { clientKey, stored } (đã tải thẳng lên kho) hoặc chính tệp JPEG kèm X-Photo-Key.
 albumsRouter.post("/:token/photos/original", photoBody, async (req, res) => {
-  const b = await album(req, { status: 1, captureEndsAt: 1 });
   const raw = Buffer.isBuffer(req.body);
   const clientKey = z.string().min(8).max(160).parse(raw ? req.get("X-Photo-Key") : req.body?.clientKey);
+  const b = await album(req, { status: 1, captureEndsAt: 1, photos: { $elemMatch: { clientKey } } });
   if (raw && !req.body.length) fail(400, "Ảnh không có dữ liệu.");
   const source = raw
     ? { buffer: req.body }
     : { storedOriginal: storedOriginal(b._id, { clientKey, stored: z.string().max(200).parse(req.body?.stored) }) };
-  res.json({ attached: await attachOriginal(b._id, clientKey, source) });
+  res.json({ attached: await attachOriginal(b._id, clientKey, { ...source, precheck: b }) });
 });
