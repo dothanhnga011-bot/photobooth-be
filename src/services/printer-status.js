@@ -69,13 +69,13 @@ export async function listPrinterStatus(branch) {
     .toArray();
   const roomRows = rows.filter((row) => row.key.startsWith("printers:room:"));
   const names = new Map((await Room.find({ _id: { $in: roomRows.map((row) => row.value?.room).filter(Boolean) } })
-    .select("name active").lean()).map((room) => [String(room._id), room]));
+    .select("name active kind").lean()).map((room) => [String(room._id), room]));
   return [
     ...rows.filter((row) => !row.key.startsWith("printers:room:"))
       .map((row) => ({ branch: row.key.slice("printers:".length), ...describe(row.value) })),
     ...roomRows
-      // Phòng đã xoá / ngừng hoạt động: không còn hiện máy in của phòng.
-      .filter((row) => { const room = names.get(row.value?.room); return room && room.active !== false; })
+      // Phòng đã xoá / ngừng hoạt động, hoặc phòng Selfbooth (in ở quầy, không có chương trình in): không hiện.
+      .filter((row) => { const room = names.get(row.value?.room); return room && room.active !== false && room.kind !== "polaroid"; })
       .map((row) => ({
         branch: row.value.branch || "",
         room: row.value.room,

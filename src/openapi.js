@@ -1548,6 +1548,11 @@ export const openapi = {
             "Lọc theo trạng thái",
             enumOf(["pending", "printed"]),
           ),
+          query(
+            "size",
+            "Lọc theo khổ in (large = Hàng chờ in của phòng Selfbooth, nhân viên ở quầy in)",
+            enumOf(["full", "strip", "large"]),
+          ),
         ],
         responses: {
           ...ok("Danh sách lệnh in", {

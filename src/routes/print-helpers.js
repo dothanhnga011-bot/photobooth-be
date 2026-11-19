@@ -37,6 +37,7 @@ export const publicJob = (job, accessToken) => ({
   code: job.code,
   name: job.name,
   roomName: job.roomName,
+  branch: job.branch || "",
   copies: job.copies,
   frameName: job.frameName,
   printSize: job.printSize || "full",

@@ -533,8 +533,8 @@ test("a room's DNP printer token prints only that room's jobs and reports the pr
   try {
     // Chưa có chương trình in của phòng: lệnh in mới chờ nhân viên in tay.
     assert.equal(await initialSpoolStatus(room._id), "idle");
-    // Phòng Polaroid / Selfbooth cũng có máy in DNP riêng (DS820, tờ 20 × 30).
-    assert.equal((await staff.post(`/api/admin/rooms/${polaroid._id}/printer`).send({}).expect(200)).body.kind, "polaroid");
+    // Phòng Selfbooth không có chương trình in: nhân viên ở quầy in tờ 20 × 30 ở Hàng chờ in.
+    assert.match((await staff.post(`/api/admin/rooms/${polaroid._id}/printer`).send({}).expect(409)).body.message, /Hàng chờ in/);
     const issued = (await staff.post(`/api/admin/rooms/${room._id}/printer`).send({}).expect(200)).body;
     assert.deepEqual([issued.name, issued.branch, issued.kind], ["Test room", "Test branch", "photobooth"]);
     const payload = jwt.verify(issued.token, config.secret);
@@ -577,7 +577,7 @@ test("a room's DNP printer token prints only that room's jobs and reports the pr
   }
 });
 
-test("each print agent claims only the sizes its printers print (DS-RX1: 10 × 15, DS820: 20 × 30)", async () => {
+test("RX1 agents claim their own sizes; Selfbooth 20 × 30 stays at the counter", async () => {
   const previous = config.printAgentToken;
   config.printAgentToken = randomUUID() + randomUUID();
   const make = (printSize) => PrintJob.create({ branch: "Size branch", code: "929292", file: "x.jpg",
@@ -589,12 +589,8 @@ test("each print agent claims only the sizes its printers print (DS-RX1: 10 × 1
   try {
     assert.equal((await claim(["full", "strip"])).body.job.id, String(full._id));
     assert.equal((await claim(["full", "strip"])).body.job, null, "a DS-RX1 agent never takes a 20 × 30 job");
-    const leased = (await claim(["large"])).body.job;
-    assert.deepEqual([leased.id, leased.printSize], [String(large._id), "large"]);
-    await request(app).post(`/api/print-agent/jobs/${large._id}/complete`)
-      .set({ Authorization: `Bearer ${config.printAgentToken}` })
-      .send({ leaseId: leased.leaseId, sent: true, message: "Đã gửi 1 tờ ra máy DS820." }).expect(200);
-    assert.equal((await PrintJob.findById(large._id)).spoolMessage, "Đã gửi 1 tờ ra máy DS820.");
+    assert.equal((await claim(["large"])).body.job, null);
+    assert.equal((await PrintJob.findById(large._id)).spoolStatus, "queued");
     await request(app).post("/api/print-agent/claim").set({ Authorization: `Bearer ${config.printAgentToken}` })
       .send({ branch: "Size branch", printSizes: ["a4"] }).expect(400);
     // Agent vừa nhận lệnh: quản trị thấy chương trình in tự động đang chạy và in được khổ nào.
@@ -603,21 +599,21 @@ test("each print agent claims only the sizes its printers print (DS-RX1: 10 × 1
     assert.equal(agent.running, true);
     assert.deepEqual(agent.printSizes, ["large"]);
     // In lỗi: lễ tân đang mở trang quản trị nhận cảnh báo ngay (luồng sự kiện print-failed).
-    const failing = await make("large");
-    const lease = (await claim(["large"])).body.job;
+    const failing = await make("full");
+    const lease = (await claim(["full"])).body.job;
     const events = [];
     const listen = (job) => events.push(job);
     printEvents.on("print-failed", listen);
     try {
       await request(app).post(`/api/print-agent/jobs/${failing._id}/complete`)
         .set({ Authorization: `Bearer ${config.printAgentToken}` })
-        .send({ leaseId: lease.leaseId, sent: false, message: "Máy DS820 hết giấy — thay giấy rồi bấm In lại." })
+        .send({ leaseId: lease.leaseId, sent: false, message: "Máy RX1 hết giấy — thay giấy rồi bấm In lại." })
         .expect(200);
     } finally {
       printEvents.off("print-failed", listen);
     }
     assert.deepEqual(events.map((job) => [job.code, job.printSize, job.spoolMessage, job.branch]),
-      [["929292", "large", "Máy DS820 hết giấy — thay giấy rồi bấm In lại.", "Size branch"]]);
+      [["929292", "full", "Máy RX1 hết giấy — thay giấy rồi bấm In lại.", "Size branch"]]);
   } finally {
     config.printAgentToken = previous;
     await PrintJob.deleteMany({ branch: "Size branch" });

@@ -10,7 +10,7 @@ import { config, root } from "../config.js";
 import { getRx1Output } from "./rx1-output.js";
 let queue = Promise.resolve();
 export function dispatchPrint(job) {
-  // 20 × 30 Selfbooth sheets print only through that room's own DS820 print agent.
+  // 20 × 30 Selfbooth sheets are printed by the counter staff (Hàng chờ in → browser print to the DS820).
   if (!config.dnpPrinter || process.platform !== "win32" || job.printSize === "large") return false;
   queue = queue
     .catch(() => {})

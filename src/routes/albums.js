@@ -307,7 +307,10 @@ export async function submitPrintPack(req, res) {
       height: sheets[0].height,
       requestKey: d.requestKey,
       requestFingerprint: fingerprint,
-      spoolStatus: archived ? "sent" : direct ? "sending" : await initialSpoolStatus(b.room),
+      // Phòng Selfbooth (như web Selfbooth): lệnh in lên Hàng chờ in, nhân viên ở quầy bấm In ra máy DS820.
+      spoolStatus: archived ? "sent" : direct ? "sending" : isPolaroidSize(b.printSize) ? "idle"
+        : await initialSpoolStatus(b.room),
+      ...(isPolaroidSize(b.printSize) && !direct && !archived && { spoolMessage: "Chờ quầy in (Hàng chờ in)." }),
       ...(archived && { spoolMessage: "Kiosk đã gửi trực tiếp tới hàng in RX1; file được lưu để xem và in lại." }),
       ...(direct && { spoolLeaseId: randomUUID(), spoolLeaseUntil: new Date(Date.now() + 5 * 60_000),
         spoolMessage: "Máy chụp đang gửi trực tiếp tới RX1." }),

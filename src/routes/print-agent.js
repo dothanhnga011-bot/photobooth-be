@@ -65,8 +65,8 @@ printAgentRouter.post("/direct/:token", printBody, async (req, res) => {
 printAgentRouter.post("/claim", async (req, res) => {
   const body = z.object({
     branch: z.string().trim().min(1).max(200).optional(),
-    // Khổ máy in cạnh agent này in được (DS-RX1: full + strip, DS820 của phòng Selfbooth: large).
-    // Không gửi = mọi khổ.
+    // Khổ máy in cạnh agent này in được (DS-RX1: full + strip). Không gửi = mọi khổ. Tờ 20 × 30 của phòng
+    // Selfbooth không vào hàng này (nhân viên ở quầy in ở Hàng chờ in).
     printSizes: z.array(z.enum(PRINT_SIZES)).min(1).max(4).optional(),
   }).parse(req.body);
   const { printSizes } = body;
@@ -86,7 +86,9 @@ printAgentRouter.post("/claim", async (req, res) => {
     ...scope, status: "pending", spoolStatus: "queued",
     ...livePrintFilter(now),
     // Lệnh in cũ không ghi khổ là khổ to.
-    ...(sizes && { printSize: sizes.includes("full") ? { $in: [...sizes, null] } : { $in: sizes } }),
+    // Even an old/misconfigured agent must never take a counter Selfbooth job.
+    printSize: sizes ? { $in: [...sizes.filter(size => size !== "large"), ...(sizes.includes("full") ? [null] : [])] }
+      : { $ne: "large" },
   }, { $set: { spoolStatus: "sending", spoolMessage: "Máy in tại tiệm đang nhận lệnh.",
     spoolLeaseId: leaseId, spoolLeaseUntil: new Date(now.getTime() + LEASE_MS) } },
   { sort: { createdAt: 1 }, new: true }).select("+spoolLeaseId");

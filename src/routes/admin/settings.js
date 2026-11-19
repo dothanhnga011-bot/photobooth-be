@@ -24,7 +24,7 @@ settingsRouter.put("/rx1-output", admin, async (req, res) => {
 settingsRouter.post("/rx1-output/sharpness-test/:room", admin, async (req, res) => {
   const room = await Room.findById(id.parse(req.params.room)).select("branch kind active").lean();
   if (!room || room.active === false) fail(404, "Không tìm thấy phòng.");
-  if (room.kind === "polaroid") fail(409, "Phòng Selfbooth in máy DNP DS820; in thử độ nét chỉ dành cho máy RX1 của phòng Photobooth.");
+  if (room.kind === "polaroid") fail(409, "Phòng Selfbooth in tờ 20 × 30 ở quầy; in thử độ nét chỉ dành cho máy RX1 của phòng Photobooth.");
   res.status(201).json(await requestSharpnessTest({ room: room._id, branch: room.branch || "" }));
 });
 

@@ -876,7 +876,7 @@ test("the admin copies frames from the Selfbooth site: image, theme and tilted s
   }
 });
 
-test("Selfbooth room on a DNP DS820: timed 20 x 30 package, its code, the phone's 2400 x 3600 sheets, the room's DS820 agent", async () => {
+test("Selfbooth room: timed 20 x 30 package, its code, the phone's 2400 x 3600 sheets wait in the counter print queue", async () => {
   const sharp = (await import("sharp")).default;
   const previous = config.printAgentToken;
   config.printAgentToken = "";
@@ -903,24 +903,26 @@ test("Selfbooth room on a DNP DS820: timed 20 x 30 package, its code, the phone'
       .set("Content-Type", "application/octet-stream").set("X-Print-Key", key)
       .set("X-Print-Frame", encodeURIComponent("khung 1"))
       .set("X-Print-Sheets", sheets.map((s) => s.length).join(",")).send(Buffer.concat(sheets));
-    // Chương trình in DS820 của phòng đã cài (báo về một lần): lệnh in mới của phòng vào hàng chờ.
-    const { token: printer, kind } = (await staff.post(`/api/admin/rooms/${selfRoom._id}/printer`).send({}).expect(200)).body;
-    assert.equal(kind, "polaroid");
-    const auth = { Authorization: `Bearer ${printer}` };
-    assert.equal((await request(app).post("/api/print-agent/claim").set(auth).send({ printSizes: ["large"] }).expect(200)).body.job, null);
+    // Phòng Selfbooth không cài chương trình in: nhân viên ở quầy in ở Hàng chờ in.
+    assert.match((await staff.post(`/api/admin/rooms/${selfRoom._id}/printer`).send({}).expect(409)).body.message, /Hàng chờ in/);
     // Tờ 10 x 15 không in được trên vé 20 x 30.
     assert.match((await send([await sheet(1200, 1800)]).expect(400)).body.message, /2400 × 3600/);
     const job = (await send([await sheet(2400, 3600), await sheet(3600, 2400)]).expect(201)).body;
     assert.equal(job.printSheets, 2);
     const stored = await PrintJob.findById(job._id).lean();
-    assert.deepEqual([stored.printSize, stored.sheets.length], ["large", 2]);
-    // Chương trình in DS820 của phòng nhận đúng lệnh khổ 20 x 30 của phòng mình (máy RX1 thì không).
-    assert.equal((await request(app).post("/api/print-agent/claim").set(auth).send({ printSizes: ["full", "strip"] }).expect(200)).body.job, null);
-    const leased = (await request(app).post("/api/print-agent/claim").set(auth).send({ printSizes: ["large"] }).expect(200)).body.job;
-    assert.deepEqual([leased.id, leased.printSize, leased.sheets.length], [String(job._id), "large", 2]);
-    await request(app).post(`/api/print-agent/jobs/${leased.id}/complete`).set(auth)
-      .send({ leaseId: leased.leaseId, sent: true, message: "Đã gửi 2 tờ tới máy DNP DS820 (8x12)." }).expect(200);
-    assert.equal((await PrintJob.findById(job._id)).spoolStatus, "sent");
+    assert.deepEqual([stored.printSize, stored.sheets.length, stored.spoolStatus, stored.status], ["large", 2, "idle", "pending"]);
+    // Lệnh in lên Hàng chờ in của quầy (chỉ lệnh 20 x 30); nhân viên in rồi bấm Đã in.
+    const queued = (await admin.get("/api/admin/print-jobs?size=large").expect(200)).body.find((j) => j._id === job._id);
+    assert.deepEqual([queued.sheetCount, queued.printSize, queued.image.endsWith(`/prints/${job._id}`)], [2, "large", true]);
+    assert.equal((await admin.get("/api/admin/print-jobs?size=full").expect(200)).body.some((j) => j._id === job._id), false);
+    await admin.get("/api/admin/print-jobs?size=a4").expect(400);
+    // In lại ở Đơn hàng mở cửa sổ in ở quầy, không tạo lệnh in mới vào hàng chờ.
+    assert.match((await admin.post(`/api/admin/bookings/${opened.booking._id}/reprint`)
+      .send({ jobId: job._id, copies: 1, requestKey: randomUUID() }).expect(400)).body.message, /Hàng chờ in/);
+    await admin.patch(`/api/admin/print-jobs/${job._id}`).send({ status: "printed" }).expect(200);
+    assert.equal((await admin.get("/api/admin/print-jobs?size=large").expect(200)).body.some((j) => j._id === job._id), false);
+    const printed = (await admin.get("/api/admin/print-jobs?size=large&status=printed").expect(200)).body.find((j) => j._id === job._id);
+    assert.ok(printed.printedAt && printed.printedBy);
     // Hết tờ của vé: không in thêm.
     await send([await sheet(2400, 3600)]).expect(409);
   } finally {
