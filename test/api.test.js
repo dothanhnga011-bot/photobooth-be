@@ -348,6 +348,11 @@ test("a paid code explains a wrong branch without changing the sale and still re
     assert.match(rejected.body.message, /Mã chụp thuộc chi nhánh/);
     assert.ok(rejected.body.message.includes(booth.branch));
     assert.ok(rejected.body.message.includes(room.branch));
+    // Khách đi nhầm phòng thử mã đúng của mình nhiều lần: không tính là nhập sai, máy không bị khoá.
+    for (let i = 0; i < 5; i++)
+      await request(app).post("/api/kiosk/claim").send({ code: ticket.code, device: wrongDevice }).expect(400);
+    const { createHash: hash } = await import("node:crypto");
+    assert.equal(await KioskAttempt.countDocuments({ deviceKey: hash("sha256").update(wrongDevice).digest("hex") }), 0);
     const unchanged = await Booking.findById(ticket._id);
     assert.equal(unchanged.status, "confirmed");
     assert.equal(unchanged.paid, true);

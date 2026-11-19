@@ -293,11 +293,8 @@ kioskRouter.post("/claim", sensitive({ key: kioskDeviceKey }), async (req, res) 
     const other = await Booking.findOne({ code: d.code, paid: true }).select("status branch codeExpiresAt createdAt printSize");
     if (other && ["checked_in", "completed"].includes(other.status))
       fail(409, "Mã chụp đã được sử dụng. Nhờ nhân viên mở lại đường dẫn ảnh nếu cần.");
-    const failed = await registerInvalidCode(deviceKey);
-    if (failed.lockedUntil > new Date()) {
-      res.set("Retry-After", String(Math.ceil((failed.lockedUntil - Date.now()) / 1000)));
-      fail(429, "Nhập sai 5 lần. Máy chụp tạm khóa 5 phút.");
-    }
+    // Mã đúng nhưng sai chi nhánh / sai loại phòng: báo khách sang đúng phòng, KHÔNG tính là nhập sai — khách đi
+    // nhầm phòng thử lại mã của mình vài lần không được làm khoá máy chụp 5 phút.
     const expiresAt = other?.codeExpiresAt || (other?.createdAt && new Date(other.createdAt.getTime() + 2 * 60 * 60 * 1000));
     if (other?.status === "confirmed" && expiresAt > new Date() && other.branch !== room.branch)
       fail(400, `Mã chụp thuộc chi nhánh “${other.branch}”, nhưng máy này ở chi nhánh “${room.branch}”. Nhờ nhân viên kiểm tra chi nhánh khi cấp mã.`);
@@ -305,9 +302,14 @@ kioskRouter.post("/claim", sensitive({ key: kioskDeviceKey }), async (req, res) 
       fail(400, polaroidRoom
         ? "Mã này dành cho phòng Photobooth. Mời bạn sang phòng Photobooth để chụp, hoặc nhờ nhân viên đổi mã."
         : "Mã này dành cho phòng Selfbooth. Mời bạn sang phòng Selfbooth để chụp, hoặc nhờ nhân viên đổi mã.");
+    const failed = await registerInvalidCode(deviceKey);
+    if (failed.lockedUntil > new Date()) {
+      res.set("Retry-After", String(Math.ceil((failed.lockedUntil - Date.now()) / 1000)));
+      fail(429, "Nhập sai 5 lần. Máy chụp tạm khóa 5 phút — nhờ nhân viên kiểm tra mã giúp bạn.");
+    }
     fail(
       400,
-      "Mã chụp không đúng, chưa thanh toán hoặc đã hết hạn 2 giờ.",
+      "Mã chụp không đúng, chưa thanh toán hoặc đã hết hạn 2 giờ. Kiểm tra lại 6 số hoặc nhờ nhân viên giúp bạn.",
     );
   }
   await KioskAttempt.deleteOne({ deviceKey });
