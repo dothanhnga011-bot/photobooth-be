@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { config, root } from "../src/config.js";
 import { printCups, run } from "./print-cups.js";
-import { createInstaxPrinter, instaxStatus, printInstaxJob } from "./instax-printer.js";
 
 const api = (process.env.PRINT_AGENT_API_URL || "").replace(/\/$/, "");
 const branch = (process.env.PRINT_AGENT_BRANCH || "").trim();
@@ -12,15 +11,8 @@ const mac = process.platform === "darwin";
 if (!(mac || process.platform === "win32") || !/^https:\/\//.test(api) || !branch || token.length < 32)
   throw new Error("Cần Windows hoặc macOS, PRINT_AGENT_API_URL (HTTPS), PRINT_AGENT_BRANCH và PRINT_AGENT_TOKEN dài ít nhất 32 ký tự.");
 
-// Máy Instax mini Link 3 / Link WIDE cạnh máy chụp (Bluetooth): INSTAX_ADDRESS là địa chỉ của máy in,
-// INSTAX_PYTHON là python của virtualenv đã cài instax-sdk.
-const instaxAddress = (process.env.INSTAX_ADDRESS || "").trim();
-const instax = instaxAddress
-  ? createInstaxPrinter({ address: instaxAddress, python: process.env.INSTAX_PYTHON || "python" })
-  : null;
-// Khổ máy in cạnh agent này in được; chưa cấu hình máy nào thì nhận mọi lệnh (và báo thiếu cấu hình).
-const printSizes = [...(config.dnpPrinter ? ["full", "strip"] : []), ...(instax ? ["instax"] : [])];
-const STATUS_EVERY_MS = 60_000;
+// Khổ máy in DNP cạnh agent này in được; chưa cấu hình máy nào thì nhận mọi lệnh (và báo thiếu cấu hình).
+const printSizes = config.dnpPrinter ? ["full", "strip"] : [];
 
 const headers = { Authorization: `Bearer ${token}` };
 async function call(endpoint, options = {}) {
@@ -67,29 +59,15 @@ async function printDnp(job, files) {
   }
 }
 async function print(job) {
-  if (job.printSize === "instax" && !instax)
-    throw new Error("Thiếu INSTAX_ADDRESS (địa chỉ Bluetooth máy Instax) trong file .env của print agent.");
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "photo-agent-"));
   try {
-    const files = await download(job, directory);
-    if (job.printSize !== "instax") return await printDnp(job, files);
-    const { printed, film } = await printInstaxJob(instax, files.flatMap((file) => Array(job.copies).fill(file)));
-    return `Đã in ${printed} tấm ra máy Instax${Number.isInteger(film) ? ` · còn ${film} tấm phim` : ""}.`;
+    return await printDnp(job, await download(job, directory));
   } finally {
     const resolved = path.resolve(directory);
     if (path.dirname(resolved) === path.resolve(os.tmpdir()) &&
       path.basename(resolved).startsWith("photo-agent-"))
       await fs.rm(resolved, { recursive: true, force: true });
   }
-}
-
-let statusAt = 0;
-async function reportStatus() {
-  if (!instax) return;
-  statusAt = Date.now();
-  const state = await instaxStatus(instax);
-  await post("/status", { branch, instax: state });
-  if (!state.connected) console.warn(state.message);
 }
 
 async function cycle() {
@@ -105,8 +83,6 @@ async function cycle() {
     console.error(`Lệnh ${job.id} thất bại: ${message}`);
   }
   await post(`/jobs/${job.id}/complete`, { leaseId: job.leaseId, sent, message: message.slice(0, 500) });
-  // Số phim vừa đổi: báo ngay để máy chụp không bán khi đã hết phim.
-  if (job.printSize === "instax") await reportStatus().catch(() => {});
   return true;
 }
 
@@ -114,9 +90,6 @@ console.log(`Print agent đang theo dõi chi nhánh ${branch}${printSizes.length
 do {
   try { await cycle(); }
   catch (error) { console.error(`Không thể nhận lệnh in: ${error.message}`); }
-  if (instax && Date.now() - statusAt >= STATUS_EVERY_MS)
-    await reportStatus().catch((error) => console.error(`Không báo được tình trạng máy Instax: ${error.message}`));
   if (process.env.PRINT_AGENT_ONCE === "1") break;
   await new Promise((resolve) => setTimeout(resolve, 4000));
 } while (true);
-instax?.close();

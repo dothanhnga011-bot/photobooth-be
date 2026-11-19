@@ -7,14 +7,14 @@ import { auth, staffBranch, requireBranch } from "../../middleware/auth.js";
 import { bookingLimit } from "../../middleware/rate-limits.js";
 import { fail, id, phone, token, today } from "../validation.js";
 import { publicBooking } from "../booking-helpers.js";
-import { INSTAX_SHEETS } from "../print-count.js";
+import { SELFBOOTH_MIN_SHEETS } from "../print-count.js";
 import { isPolaroidSize } from "../../print-sizes.js";
 
 export const ticketsRouter = Router();
 const CODE_LIFETIME_MS = 2 * 60 * 60 * 1000;
 
-// Mã chụp của gói photobooth (in DNP) chỉ nhập ở phòng photobooth; mã của gói Polaroid (khổ Instax)
-// chỉ nhập ở phòng Polaroid. Không cấp mã ở chi nhánh không có phòng đúng loại để nhập.
+// Mã chụp của gói photobooth (in DNP) chỉ nhập ở phòng photobooth; mã của gói Selfbooth (tờ 20 × 30)
+// chỉ nhập ở phòng Selfbooth. Không cấp mã ở chi nhánh không có phòng đúng loại để nhập.
 async function requireCounterRoom(branch, room, pack) {
   const polaroid = isPolaroidSize(pack.printSize);
   const kind = polaroid ? "Selfbooth" : "photobooth";
@@ -24,13 +24,13 @@ async function requireCounterRoom(branch, room, pack) {
   if (!await Room.exists({ branch, active: true, kind: polaroid ? "polaroid" : { $ne: "polaroid" } }))
     fail(400, `Chi nhánh “${branch}” chưa có phòng ${kind} đang hoạt động để nhập mã. Vui lòng chọn đúng chi nhánh hoặc kiểm tra loại phòng trong Quản lý máy.`);
 }
-// Lượt chụp theo gói. Gói Polaroid (như Selfbooth): bấm dây không giới hạn trong số phút của gói, in số
-// tấm Instax của gói; khách chọn ảnh và bộ khung trên điện thoại.
+// Lượt chụp theo gói. Gói Selfbooth: bấm dây không giới hạn trong số phút của gói, in số tờ 20 × 30
+// của gói; khách chọn ảnh và bộ khung trên điện thoại.
 function captureTerms(pack) {
   if (!isPolaroidSize(pack.printSize))
     return { shots: pack.shots, captureDuration: pack.duration, prints: pack.prints, selectCount: pack.selectCount || 4,
       printSize: pack.printSize || "full" };
-  return { captureDuration: Number(pack.duration) || 10, prints: Math.max(INSTAX_SHEETS, Number(pack.prints) || 0),
+  return { captureDuration: Number(pack.duration) || 10, prints: Math.max(SELFBOOTH_MIN_SHEETS, Number(pack.prints) || 0),
     selectCount: Number(pack.selectCount) || 1, printSize: pack.printSize };
 }
 

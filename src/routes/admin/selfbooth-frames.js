@@ -1,8 +1,7 @@
 // Chép khung từ web Selfbooth của tiệm (14/11 chủ tiệm cho phép đọc khung bên Selfbooth). Đọc danh sách
 // khung công khai của web đó (/api/catalog, /api/frames/:id/image), quản trị chọn khung rồi chép sang:
-// giữ ảnh, tên, chủ đề, thứ tự và các ô (cả ô xoay). Từ 14/11 khung chép sang in tờ 20 × 30 ở máy DNP DS820
-// của phòng Polaroid (khổ "large", như web Selfbooth); khung chép trước đó (khổ Instax) được đổi sang 20 × 30
-// khi chép lại.
+// giữ ảnh, tên, chủ đề, thứ tự và các ô (cả ô xoay). Khung chép sang in tờ 20 × 30 ở máy DNP DS820 của
+// phòng Selfbooth (khổ "large", như web Selfbooth).
 import { Router } from "express";
 import { z } from "zod";
 import { config } from "../../config.js";
@@ -45,13 +44,11 @@ async function selfboothCatalog() {
 const imageUrl = (frame, kind = "image") =>
   `${config.selfboothApi}/api/frames/${frame._id}/${kind}${frame.imageHash ? `?v=${encodeURIComponent(frame.imageHash)}` : ""}`;
 
-// Danh sách khung bên Selfbooth, kèm khung nào đã chép sang (outdated: bản chép cũ khổ Instax, chọn chép lại
-// để đổi sang tờ 20 × 30).
+// Danh sách khung bên Selfbooth, kèm khung nào đã chép sang.
 selfboothFramesRouter.get("/", admin, async (req, res) => {
   const frames = await selfboothCatalog();
-  const copies = await Frame.find({ source: { $in: frames.map((f) => sourceOf(f._id)) } }).select("source printSize").lean();
-  const copied = new Set(copies.filter((f) => f.printSize !== "instax").map((f) => f.source));
-  const outdated = new Set(copies.filter((f) => f.printSize === "instax").map((f) => f.source));
+  const copies = await Frame.find({ source: { $in: frames.map((f) => sourceOf(f._id)) } }).select("source").lean();
+  const copied = new Set(copies.map((f) => f.source));
   res.json({
     source: config.selfboothApi,
     frames: frames.map((frame) => ({
@@ -63,18 +60,17 @@ selfboothFramesRouter.get("/", admin, async (req, res) => {
       angled: frame.slots.some((slot) => slot.angle),
       preview: imageUrl(frame, "preview"),
       copied: copied.has(sourceOf(frame._id)),
-      outdated: !copied.has(sourceOf(frame._id)) && outdated.has(sourceOf(frame._id)),
     })),
   });
 });
 
 // Tên chủ đề bên mình cho khung chép sang: giữ tên Selfbooth; trùng chủ đề Photobooth (khung 10 × 15)
-// thì thêm "(Selfbooth)" để khung Instax không lẫn vào bộ của phòng Photobooth.
+// thì thêm "(Selfbooth)" để khung 20 × 30 không lẫn vào bộ của phòng Photobooth.
 async function themeFor(name) {
   if (!name) return "";
   const stored = (await Setting.findOne({ key: "studio" }).lean())?.value?.themes || [];
   const photobooth = stored.some((theme) => theme.name === name && theme.kind === "photobooth") ||
-    await Frame.exists({ themeName: name, printSize: { $nin: ["instax", "large"] } });
+    await Frame.exists({ themeName: name, printSize: { $ne: POLAROID_SIZE } });
   return photobooth ? `${name} (Selfbooth)`.slice(0, 100) : name;
 }
 
@@ -88,18 +84,15 @@ async function frameImage(frame) {
   return `data:${type};base64,${bytes.toString("base64")}`;
 }
 
-// Chép các khung đã chọn (khung đã chép trước đó thì bỏ qua; bản chép cũ khổ Instax đổi sang tờ 20 × 30).
+// Chép các khung đã chọn (khung đã chép trước đó thì bỏ qua).
 selfboothFramesRouter.post("/", admin, async (req, res) => {
   const { ids } = z.object({ ids: z.array(z.string().regex(/^[a-f\d]{24}$/i)).min(1).max(30) }).parse(req.body);
   const wanted = new Set(ids.map((value) => value.toLowerCase()));
   const frames = (await selfboothCatalog()).filter((frame) => wanted.has(String(frame._id).toLowerCase()));
   if (!frames.length) fail(404, "Không còn khung nào trong số đã chọn trên web Selfbooth.");
-  const created = [], skipped = [], converted = [];
+  const created = [], skipped = [];
   for (const frame of frames) {
     const source = sourceOf(frame._id);
-    const old = await withFrameCatalogLock(() =>
-      Frame.findOneAndUpdate({ source, printSize: "instax" }, { $set: { printSize: POLAROID_SIZE } }, { new: true }));
-    if (old) { converted.push(old.name); continue; }
     if (await Frame.exists({ source })) { skipped.push(frame.name); continue; }
     const input = frameInput.parse({
       name: frame.name?.trim() || "Khung Selfbooth",
@@ -121,5 +114,5 @@ selfboothFramesRouter.post("/", admin, async (req, res) => {
     await withFrameCatalogLock(() => Frame.create(input));
     created.push(input.name);
   }
-  res.status(created.length ? 201 : 200).json({ created, skipped, converted });
+  res.status(created.length ? 201 : 200).json({ created, skipped });
 });

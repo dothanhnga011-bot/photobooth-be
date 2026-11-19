@@ -23,7 +23,7 @@ after(async () => {
 
 const booking = (accessToken, extra = {}) => Booking.create({
   accessToken, code: String(Math.floor(100000 + Math.random() * 899999)), status: "completed", paid: true,
-  printSize: "instax", selectCount: 2, prints: 1, photos: [], ...extra,
+  printSize: "large", selectCount: 2, prints: 1, photos: [], ...extra,
 });
 const start = (token) => request(app).post(`/api/albums/${token}/edit-start`);
 

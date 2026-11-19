@@ -296,7 +296,7 @@ export const openapi = {
         codeExpiresAt: str("Mã chụp hết hạn sau hai giờ kể từ paidAt", { format: "date-time" }),
         shots: int("Số ảnh được chụp của gói tại lúc bán"),
         countdownSeconds: int("Trường cũ; kiosk hiện dùng dây bấm, không tự chụp theo đếm ngược"),
-        printSize: enumOf(["full", "strip", "instax", "large"]),
+        printSize: enumOf(["full", "strip", "large"]),
         name: { type: "string" },
         phone: { type: "string" },
         status: enumOf(
@@ -374,8 +374,8 @@ export const openapi = {
           shots: int("Số lần bấm dây chụp tối đa (1–40); gói Selfbooth chụp không giới hạn", { example: 12 }),
           countdownSeconds: int("Trường tương thích kiosk cũ; giao diện hiện tại dùng dây bấm", { example: 10 }),
           selectCount: int("Số ảnh khách chọn để ghép khung trên máy chụp (1–12)", { example: 4 }),
-          printSize: enumOf(["full", "strip", "instax", "large"]),
-          prints: int("Số tờ in kèm gói (0–20); gói Selfbooth (instax): số tấm Instax, ít nhất 1", { example: 1 }),
+          printSize: enumOf(["full", "strip", "large"]),
+          prints: int("Số tờ in kèm gói (0–20); gói Selfbooth (large): số tờ 20 × 30, ít nhất 1", { example: 1 }),
           branches: { type: "array", items: { type: "string" }, description: "Chi nhánh áp dụng; để trống = mọi chi nhánh" },
           active: { type: "boolean", example: true },
         },
@@ -386,7 +386,7 @@ export const openapi = {
           name: { type: "string", example: "Khung sinh nhật" },
           themeName: { type: "string", example: "" },
           order: { type: "integer", example: 0 },
-          printSize: enumOf(["full", "strip", "instax", "large"]),
+          printSize: enumOf(["full", "strip", "large"]),
           image: str("Ảnh khung PNG/JPG dạng data URL (≤ 3 MB)"),
           slots: {
             type: "array",
@@ -1057,10 +1057,10 @@ export const openapi = {
         summary: "Máy in tại tiệm nhận một lệnh in (của một phòng, hoặc của cả chi nhánh)",
         description: "Authorization: Bearer <mã máy in của phòng> (POST /api/admin/rooms/{id}/printer — chỉ nhận lệnh in của " +
           "đúng phòng đó, không cần branch) hoặc Bearer PRINT_AGENT_TOKEN (agent chung, nhận lệnh của chi nhánh `branch`). " +
-          "printSizes: khổ máy in cạnh agent in được (full / strip / instax). Mỗi lệnh được cấp một lease 5 phút.",
+          "printSizes: khổ máy in cạnh agent in được (full / strip / large). Mỗi lệnh được cấp một lease 5 phút.",
         requestBody: body({
           branch: str("Chi nhánh đặt máy in (chỉ với PRINT_AGENT_TOKEN)"),
-          printSizes: { type: "array", items: enumOf(["full", "strip", "instax", "large"]) },
+          printSizes: { type: "array", items: enumOf(["full", "strip", "large"]) },
         }, []),
         responses: { ...ok("Lệnh in hoặc job: null"), ...errors(400, 403) },
       },
@@ -1086,7 +1086,7 @@ export const openapi = {
       post: {
         tags: ["Máy chụp (kiosk)"],
         summary: "Khách mua lượt chụp ngay tại máy (đút tiền) hoặc bỏ qua trả tiền ở chế độ thử",
-        description: "Chỉ phòng photobooth (kind = photobooth), chỉ gói tờ bé / tờ to (không bán gói Instax); skip = true cần thêm Chế độ thử (paymentTest). " +
+        description: "Chỉ phòng photobooth (kind = photobooth), chỉ gói tờ bé / tờ to (không bán gói Selfbooth); skip = true cần thêm Chế độ thử (paymentTest). " +
           "prints: số tờ 10 × 15 khách chọn (khổ nhỏ: 1 tờ cắt đôi = 2 tờ nhỏ), tối thiểu 2 tờ nhỏ hoặc 2 tờ lớn; " +
           "tờ vượt số tờ của gói tính theo giá in thêm. bills: các tờ tiền máy nhận tiền đã nhận; tổng phải ≥ giá gói + tờ in thêm " +
           "(409 nếu expectedTotal khác giá máy chủ và chưa đủ tiền). Gửi lại cùng requestKey trả đúng lượt chụp đã tạo.",
@@ -1111,7 +1111,7 @@ export const openapi = {
           "Không tạo lượt mới: trả 410, yêu cầu mua mã đã thanh toán tại quầy rồi dùng /api/kiosk/claim.",
         requestBody: body({
           device: str("Mã máy chụp của phòng"),
-          package: str("ID gói khổ Instax (layout)"),
+          package: str("ID gói Selfbooth (khổ large)"),
           requestKey: uuid,
         }, ["device", "package", "requestKey"]),
         responses: { ...ok("Lượt cũ: { booking, accessToken, captureToken, flip }", { type: "object" }), ...errors(400, 403, 409, 410, 429) },
@@ -1181,7 +1181,7 @@ export const openapi = {
       post: {
         tags: ["Máy chụp (kiosk)"],
         summary: "Máy chụp báo còn mở (mỗi phút), nhận tên phòng, chế độ lật ảnh và loại phòng",
-        description: "kind là loại phòng: photobooth (Chạm → Nhập mã / Tiền mặt, in DNP), polaroid (Chạm → chọn layout → chụp, trả tiền ở quầy, in Instax). " +
+        description: "kind là loại phòng: photobooth (Chạm → Nhập mã / Tiền mặt, in DNP), polaroid = Selfbooth (nhập mã mua ở quầy → chụp → chọn ảnh, ghép khung trên điện thoại, in tờ 20 × 30). " +
           "cashCheckoutReady = máy chủ nhận bán lượt chụp bằng tiền mặt tại máy cho phòng này.",
         requestBody: body({ device: str("Mã máy chụp của phòng") }, ["device"]),
         responses: { ...ok("{ room: { _id, name, branch, flip, kind, paymentTest, cashCheckoutReady, printers } }"), ...errors(400, 403) },
@@ -1465,7 +1465,7 @@ export const openapi = {
     "/api/albums/{token}/edit-start": {
       post: {
         tags: ["Album khách"], summary: "Bắt đầu tính giờ chọn & chỉnh ảnh trên điện thoại (phòng Selfbooth)",
-        description: "Chỉ cho album khổ Instax đã chụp xong. Lần gọi đầu đặt editEndsAt = bây giờ + settings.selectSeconds (mặc định 250 giây); các lần sau trả lại cùng hạn. serverTime để điện thoại bù đồng hồ.",
+        description: "Chỉ cho album phòng Selfbooth (tờ 20 × 30) đã chụp xong. Lần gọi đầu đặt editEndsAt = bây giờ + settings.selectSeconds (mặc định 250 giây); các lần sau trả lại cùng hạn. serverTime để điện thoại bù đồng hồ.",
         responses: {
           ...ok("Hạn chỉnh ảnh", object({ editEndsAt: { type: "string", format: "date-time" }, serverTime: int("Giờ máy chủ (ms)") })),
           ...errors(404, 409),
@@ -1492,7 +1492,7 @@ export const openapi = {
           { name: "X-Print-Key", in: "header", required: false, description: "Khi gửi nhị phân: mã yêu cầu (UUID) chống in trùng.", schema: uuid },
           { name: "X-Print-Frame", in: "header", required: false, description: "Khi gửi nhị phân: tên bộ khung, mã hóa encodeURIComponent (tối đa 100 ký tự).", schema: { type: "string" } },
           { name: "X-Print-Sheets", in: "header", required: false, description: "Khi gửi nhị phân: số byte của từng tờ theo thứ tự, ví dụ 3145728,2981234 (1–100 tờ, mỗi tờ ≤ 9 MB).", schema: { type: "string" } },
-          { name: "X-Print-Size", in: "header", required: false, description: "Khổ của khung được in: strip = máy DNP cắt đôi tờ thành 2 dải, full = in nguyên tờ. Bỏ trống: theo khổ của gói. Gói Instax luôn là instax.", schema: { type: "string", enum: ["full", "strip"] } },
+          { name: "X-Print-Size", in: "header", required: false, description: "Khổ của khung được in: strip = máy DNP cắt đôi tờ thành 2 dải, full = in nguyên tờ. Bỏ trống: theo khổ của gói. Gói Selfbooth luôn là large.", schema: { type: "string", enum: ["full", "strip"] } },
         ],
         requestBody: (() => {
           const request = body(

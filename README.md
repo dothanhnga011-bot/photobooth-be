@@ -77,7 +77,7 @@ Trang Swagger chạy cùng địa chỉ với máy chủ nên được phép g�
 - Lễ tân vào **Phòng & chi nhánh** để xem phòng đang hoạt động và mở/cài kiosk: `GET /api/admin/rooms`
   và `POST /api/admin/rooms/:id/device` cần đăng nhập, cho phép `staff` và `admin`. Quản trị thấy cả phòng đã tắt;
   phòng đã tắt không được cấp mã máy chụp. Tạo/sửa/tắt phòng, cài đặt studio và các danh mục khác vẫn chỉ quản trị.
-- Khách **chỉ chụp bằng nút chụp / remote của máy ảnh** (không có nút chụp trên màn hình): FUJIFILM X Acquire (Photobooth) hoặc Canon EOS Utility (Polaroid/R100)
+- Khách **chỉ chụp bằng nút chụp / remote của máy ảnh** (không có nút chụp trên màn hình): FUJIFILM X Acquire (Photobooth, Selfbooth) hoặc Canon EOS Utility
   trên máy chụp lưu ảnh gốc vào thư mục, máy chụp (Chrome / Edge, Windows hoặc macOS) đọc thư mục rồi gửi lên
   `POST /api/kiosk/photo`. Mọi phiên mới có `captureMode: "folder"`.
 
@@ -229,7 +229,7 @@ Các file liên quan: `src/services/media-storage.js`, `src/routes/admin/storage
   đã có chương trình in (từng báo về); trước đó lệnh in để nhân viên in tay. Nhật ký:
   `%LOCALAPPDATA%\NXC-Printer\print-agent.log`; kiểm tra máy in / khổ giấy / tuỳ chọn cắt của driver (chỉ xem):
   `powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\NXC-Printer\print-agent.ps1" -Diagnose`.
-- In tự động bằng print agent Node (cách cũ, cả chi nhánh; Mac; Instax): máy chụp bấm "In ảnh" → lệnh in lên máy
+- In tự động bằng print agent Node (cách cũ, cả chi nhánh; Mac): máy chụp bấm "In ảnh" → lệnh in lên máy
   chủ → **print agent** chạy trên máy cắm máy in tự nhận lệnh và in. Windows: `scripts/print-dnp.ps1` chọn khổ 4x6 của driver. Mac:
   `scripts/print-cups.js` in qua CUPS (`lp`), chọn khổ 4x6 trong PageSize của driver (hàng in đã đặt sẵn khổ
   4x6 / 2inch cut thì giữ). Tờ khác chiều với khổ giấy tự xoay.
@@ -247,64 +247,16 @@ Các file liên quan: `src/services/media-storage.js`, `src/routes/admin/storage
 - `DNP_PRINTER_NAME` trên chính máy chủ (khi máy chủ chạy ngay trên máy Windows cắm DNP) cũng in tự động không cần
   print agent. Không bật cách nào thì in lại từ trang Đơn hàng → "Tải ảnh" / "In ảnh".
 
-### Máy in Instax Link WIDE (phòng Polaroid, khổ Instax)
+### Phòng Selfbooth (tờ 20 × 30, DNP DS820)
 
-Máy in đi theo **khổ ảnh của gói**: khổ to / khổ nhỏ in ra DNP, khổ **Instax** (layout phòng Polaroid) in ra máy
-Instax Link WIDE đặt cạnh máy chụp. Print agent nói chuyện với máy in qua Bluetooth bằng thư viện nguồn mở
-[instax-sdk](https://github.com/arahe-dev/instax-sdk) (MIT, đã thử trên mini Link 3 với Windows 11) để đọc được
-số phim / pin (driver máy tính của Fujifilm không báo số phim). Đây không phải cách chính hãng: cập nhật firmware
-máy in có thể làm hỏng, nên thử trên đúng máy in trước khi nhận khách. Các bước dưới đây viết cho mini Link 3;
-Link WIDE khác ở mục ngay sau.
+Gói của phòng Selfbooth in tờ 20 × 30 (2400 × 3600 hoặc 3600 × 2400) ra máy DNP DS820 qua chương trình in riêng
+của phòng. Khung: Quản trị → Khung ảnh → chép khung từ Selfbooth hoặc Thêm mới (khổ 20 × 30). Nhân viên bán gói và
+xác nhận thanh toán ở quầy qua `POST /api/admin/tickets`, khách nhập mã 6 số ở kiosk qua `POST /api/kiosk/claim`.
+Mã phải đúng chi nhánh, đúng loại phòng, đã thanh toán và chưa hết hạn 2 giờ. Đường `/api/kiosk/polaroid` cũ chỉ
+khôi phục phiên đang chụp đã tạo trước bản cập nhật, không tạo lượt mới. Chụp xong, khách chọn ảnh, chủ đề và ghép
+khung trên điện thoại (01 Ảnh → 02 Chủ đề → 03 Ghép ảnh → 04 Kết quả); hết giờ chọn thì máy tự in.
 
-1. Trong app INSTAX trên điện thoại: đặt **tự tắt nguồn (auto power-off) = Tắt** (không thì máy in tự tắt sau
-   5 phút), rồi ngắt kết nối điện thoại với máy in. Cắm sạc USB-C cho máy in.
-2. Trên máy tính chạy print agent (máy cạnh máy chụp, Windows 11 có Bluetooth): cài Python 3.11+, rồi
-   ```powershell
-   git clone https://github.com/arahe-dev/instax-sdk C:\PhotoBooth\instax-sdk
-   cd C:\PhotoBooth\instax-sdk
-   python -m venv .venv
-   .\.venv\Scripts\python.exe -m pip install -e ".[imaging]"
-   .\.venv\Scripts\instax.exe --transport ble classic-address   # in ra địa chỉ, vd. 88:B4:36:XX:XX:XX
-   .\.venv\Scripts\instax.exe info --address 88:B4:36:XX:XX:XX   # phải thấy số phim và pin
-   ```
-3. Thêm vào `.env` của print agent: `INSTAX_ADDRESS=<địa chỉ trên>` và
-   `INSTAX_PYTHON=C:\PhotoBooth\instax-sdk\.venv\Scripts\python.exe`. Một print agent in được cả DNP và
-   Instax; agent chỉ nhận lệnh của khổ mà máy in cạnh nó in được.
-4. Print agent báo tình trạng máy Instax lên máy chủ mỗi phút và sau mỗi lần in. Máy chụp báo nhân viên khi
-   máy in mất kết nối hoặc hết phim (mỗi layout in 1 tấm), và không cho chọn quá số phim còn lại; quản trị
-   xem số phim / pin ở **Quản lý máy**. Lệnh in kiểm tra đủ phim trước khi in tấm đầu; tấm nào máy in không
-   xác nhận thì dừng và báo nhân viên xem khay trước khi bấm In lại (không tự in lại để tránh in trùng).
-
-Khung Instax: Quản trị → Khung ảnh → Thêm mới → **Size Instax** (thẻ Instax Wide, ảnh ngang 1800 × 1200 — chừa
-lề ~50 px trên / dưới, ~20 px hai bên vì phim che mép). Mỗi tấm in là ảnh ngang 1260 × 840
-(`scripts/instax-bridge.py` nén vừa giới hạn của máy in). Quản trị → Khổ ảnh & bảng giá → tab **Polaroid** →
-**Tạo 2 layout mẫu** tạo gói ảnh nhỏ (chọn 1 ảnh, chụp 3 phút) và ảnh to (chọn 2 ảnh, chụp 5 phút), kèm
-khung trắng; layout / khung cùng số ảnh đã có được giữ nguyên. Nhân viên bán gói và xác nhận thanh toán ở
-quầy qua `POST /api/admin/tickets`, khách nhập mã 6 số ở kiosk qua `POST /api/kiosk/claim`.
-Mã phải đúng chi nhánh, đúng loại phòng, đã thanh toán và chưa hết hạn 2 giờ. Đường `/api/kiosk/polaroid`
-cũ chỉ khôi phục phiên đang chụp đã tạo trước bản cập nhật, không tạo lượt mới.
-Polaroid luôn in đúng 1 tấm, bấm dây Canon không giới hạn trong thời gian chụp; khách nhận toàn bộ ảnh gốc
-qua mã QR, phòng Polaroid không quay video. Trên kiosk ngang, live view chiếm 2/3 và cột ảnh vừa chụp chiếm 1/3.
-
-#### Máy Instax Link WIDE
-
-Cùng print agent và cùng bridge, nhưng instax-sdk **chưa thử trên Link WIDE** (dùng cấu hình chung: ảnh tối đa
-105 KB, gửi chậm hơn mini Link 3 một chút) — in thử trước khi nhận khách. Các bước 1–4 ở trên giữ nguyên, trừ:
-
-- **Địa chỉ:** `classic-address` chỉ đọc được trên mini Link 3. Link WIDE có hai thiết bị Bluetooth,
-  `INSTAX-<số máy>(IOS)` (BLE) và `INSTAX-<số máy>(ANDROID)` (Classic). Ghép đôi thiết bị Classic ở
-  Cài đặt → Bluetooth và thiết bị → Thêm thiết bị → Bluetooth (điện thoại phải ngắt khỏi máy in), rồi đọc địa chỉ:
-  ```powershell
-  Get-PnpDevice -Class Bluetooth | ? FriendlyName -like 'INSTAX-*' | % { '{0}  {1}' -f $_.FriendlyName, ((Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName DEVPKEY_Bluetooth_DeviceAddress).Data -replace '(..)(?!$)', '$1:') }
-  ```
-  Đối chiếu số máy với app INSTAX (thường mini Link 3 đuôi `(EDR)`, Link WIDE đuôi `(ANDROID)`).
-- **Kiểm tra:** `instax.exe info --address <địa chỉ>` phải in `image 1260x840`. Không kết nối được:
-  `instax.exe rfcomm-scan --address <địa chỉ>` tìm kênh trả lời `instax protocol` (mặc định 6), ghi
-  `INSTAX_CHANNEL=<kênh>` vào `.env`. Classic vẫn không được thì dùng BLE: `instax.exe scan` lấy địa chỉ dòng
-  `(IOS)`, đặt `INSTAX_TRANSPORT=ble` và `INSTAX_ADDRESS=<địa chỉ đó>` (chậm hơn nhiều, có thể 1–2 phút một tấm).
-- **Một máy Instax mỗi print agent** (`INSTAX_ADDRESS`): chuyển sang Link WIDE thì mini Link 3 ngừng nhận lệnh.
-- **Tấm in:** máy chụp gửi ảnh ngang 1260 × 840 đúng khổ Wide. Lệnh in cũ khổ mini (dọc 600 × 800) vẫn in được:
-  bridge xoay ngang, in giữa tấm phim (hai bên để trắng).
+Web chỉ in ra DNP. Khách muốn in máy khác thì tải ảnh từ album, AirDrop cho quầy và quầy tự in ngoài web.
 
 Tùy chọn phục vụ cả frontend đã build: đặt `FRONTEND_DIST=../photobooth-fe/dist` và
 `CLIENT_URL=http://localhost:8080` trong `.env` rồi khởi động lại.

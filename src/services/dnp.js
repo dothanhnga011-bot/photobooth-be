@@ -10,8 +10,8 @@ import { config, root } from "../config.js";
 import { getRx1Output } from "./rx1-output.js";
 let queue = Promise.resolve();
 export function dispatchPrint(job) {
-  // Instax prints only through the print agent next to the printer (Bluetooth).
-  if (!config.dnpPrinter || process.platform !== "win32" || job.printSize === "instax" || job.printSize === "large") return false;
+  // 20 × 30 Selfbooth sheets print only through that room's own DS820 print agent.
+  if (!config.dnpPrinter || process.platform !== "win32" || job.printSize === "large") return false;
   queue = queue
     .catch(() => {})
     .then(async () => {

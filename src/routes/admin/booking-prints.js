@@ -62,7 +62,7 @@ bookingPrintsRouter.post("/bookings/:id/reprint", allow("print:operate"), async 
   const source = await PrintJob.findOne({ _id: d.jobId, booking: booking._id, ...livePrintFilter() });
   if (!source) fail(404, "File in không còn hoặc đã hết hạn lưu trữ.");
   if (d.delivery === "local" && isPolaroidSize(source.printSize))
-    fail(400, "Ảnh phòng Selfbooth in qua hàng chờ của máy in phòng đó (DS820 / Instax), không in thẳng ở quầy.");
+    fail(400, "Ảnh phòng Selfbooth in qua hàng chờ của máy in phòng đó (DS820), không in thẳng ở quầy.");
   if (d.delivery === "local" && (source.sheets?.length || 1) * d.copies > 20)
     fail(400, "Mỗi lượt hỗ trợ tối đa 20 tờ in.");
   let job;
@@ -91,7 +91,7 @@ bookingPrintsRouter.post("/bookings/:id/reprint", allow("print:operate"), async 
 // A manually composed recovery sheet is archived after local output, without charging the album.
 bookingPrintsRouter.post("/bookings/:id/print-file", allow("print:operate"), printBody, async (req, res) => {
   const booking = await bookingFor(req, true);
-  if (isPolaroidSize(booking.printSize)) fail(400, "Ảnh phòng Selfbooth in qua hàng chờ của máy in phòng đó (DS820 / Instax).");
+  if (isPolaroidSize(booking.printSize)) fail(400, "Ảnh phòng Selfbooth in qua hàng chờ của máy in phòng đó (DS820).");
   const d = readPrintPack(req);
   const copies = z.coerce.number().int().min(1).max(20).parse(req.get("X-Print-Copies") || 1);
   if (d.sheets.length * copies > 20) fail(400, "Mỗi lượt hỗ trợ tối đa 20 tờ in.");

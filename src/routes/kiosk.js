@@ -8,8 +8,7 @@ import { z } from "zod";
 import { config } from "../config.js";
 import { Booking, Room, Package, KioskAttempt, Setting } from "../models/index.js";
 import { extraPriceFor, minSheets, piecesPerSheet, saleTotal } from "./print-count.js";
-import { instaxState, readPrinterStatus } from "../services/printer-status.js";
-import { isPolaroidSize } from "../print-sizes.js";
+import { isPolaroidSize, POLAROID_SIZE } from "../print-sizes.js";
 import { appendCapture, finishCapture } from "../services/capture.js";
 import { timed, saveImageTask } from "../services/image-save-queue.js";
 import { directUploadRequest, photoBody, readPhotoUpload, storedOriginal } from "./photo-upload.js";
@@ -82,14 +81,11 @@ kioskRouter.post("/ping", async (req, res) => {
     { returnDocument: "after", projection: { name: 1, branch: 1, flip: 1, kind: 1, paymentTest: 1 } },
   );
   if (!room) fail(403, "Phòng chụp đã ngừng hoạt động.");
-  const printers = await readPrinterStatus(room.branch);
   res.json({ room: {
     _id: room._id, name: room.name, branch: room.branch, flip: room.flip || "device",
     kind: room.kind || "photobooth", paymentTest: Boolean(room.paymentTest),
     // Phòng photobooth: máy chụp bán lượt tại máy bằng tiền mặt (bên cạnh nhập mã).
     cashCheckoutReady: (room.kind || "photobooth") === "photobooth",
-    // Máy in Instax cạnh máy chụp: khổ Instax chỉ mở khi máy in sẵn sàng và đủ phim.
-    printers: { instax: instaxState(printers) },
   } });
 });
 
@@ -270,7 +266,7 @@ kioskRouter.post("/claim", sensitive({ key: kioskDeviceKey }), async (req, res) 
     paid: true,
     status: "confirmed",
     branch: room.branch,
-    printSize: polaroidRoom ? { $in: ["instax", "large"] } : { $nin: ["instax", "large"] },
+    printSize: polaroidRoom ? POLAROID_SIZE : { $ne: POLAROID_SIZE },
     $or: [
       { codeExpiresAt: { $gt: new Date() } },
       { codeExpiresAt: { $exists: false }, createdAt: { $gt: new Date(Date.now() - 2 * 60 * 60 * 1000) } },

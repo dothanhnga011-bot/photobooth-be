@@ -28,15 +28,15 @@ settingsRouter.post("/rx1-output/sharpness-test/:room", admin, async (req, res) 
   res.status(201).json(await requestSharpnessTest({ room: room._id, branch: room.branch || "" }));
 });
 
-// Only the extra-sheet prices (admins only): a 10 × 15 sheet and an Instax Wide print. The rest of
+// Only the extra-sheet prices (admins only): a 10 × 15 sheet and a 20 × 30 Selfbooth sheet. The rest of
 // the studio settings are left exactly as they are.
 settingsRouter.put("/extra-print-price", admin, async (req, res) => {
   const prices = z
     .object({
       extraPrintPrice: priceVND(10_000_000).optional(),
-      extraInstaxPrice: priceVND(10_000_000).optional(),
+      extraSelfboothPrice: priceVND(10_000_000).optional(),
     })
-    .refine((v) => v.extraPrintPrice !== undefined || v.extraInstaxPrice !== undefined, "Vui lòng nhập giá in thêm.")
+    .refine((v) => v.extraPrintPrice !== undefined || v.extraSelfboothPrice !== undefined, "Vui lòng nhập giá in thêm.")
     .parse(req.body);
   const saved = await Setting.findOneAndUpdate(
     { key: "studio" },
@@ -172,7 +172,7 @@ settingsRouter.put("/", admin, async (req, res) => {
         .default(""),
       // Giá bán thêm 1 tờ in 15 × 10 cm tại quầy (0 = chưa bán lẻ).
       extraPrintPrice: priceVND(10_000_000).optional(),
-      extraInstaxPrice: priceVND(10_000_000).optional(),
+      extraSelfboothPrice: priceVND(10_000_000).optional(),
     })
     // Thông tin chuyển khoản: nhập thì nhập đủ cả 3 ô.
     .refine(

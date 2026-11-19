@@ -1,6 +1,6 @@
 import { isPolaroidSize } from "./print-sizes.js";
-// Gói phòng Polaroid (khổ Instax) tính theo thời gian như Selfbooth (14/11 chủ tiệm bỏ 2 layout "1 ảnh ·
-// 3 phút" và "2 ảnh · 5 phút"): giá, số phút chụp và số tấm Instax nằm trong gói. Khách bấm dây không
+// Gói phòng Selfbooth (tờ 20 × 30) tính theo thời gian như web Selfbooth: giá, số phút chụp và số tờ in
+// nằm trong gói. Khách bấm dây không
 // giới hạn trong thời gian của gói, chọn ảnh và bộ khung trên điện thoại. Vé đã bán giữ đúng gói lúc bán.
 export function polaroidPackage(pack) {
   if (!isPolaroidSize(pack?.printSize)) return pack;

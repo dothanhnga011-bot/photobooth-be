@@ -577,47 +577,47 @@ test("a room's DNP printer token prints only that room's jobs and reports the pr
   }
 });
 
-test("each print agent claims only the sizes its printers print (DNP: 10 × 15, Instax: instax)", async () => {
+test("each print agent claims only the sizes its printers print (DS-RX1: 10 × 15, DS820: 20 × 30)", async () => {
   const previous = config.printAgentToken;
   config.printAgentToken = randomUUID() + randomUUID();
   const make = (printSize) => PrintJob.create({ branch: "Size branch", code: "929292", file: "x.jpg",
     sheets: [{ file: "x.jpg" }], printSize, copies: 1, status: "pending", spoolStatus: "queued" });
-  const [instax, full] = [await make("instax"), await make("full")];
+  const [large, full] = [await make("large"), await make("full")];
   const claim = (printSizes) => request(app).post("/api/print-agent/claim")
     .set({ Authorization: `Bearer ${config.printAgentToken}` })
     .send({ branch: "Size branch", ...(printSizes && { printSizes }) }).expect(200);
   try {
     assert.equal((await claim(["full", "strip"])).body.job.id, String(full._id));
-    assert.equal((await claim(["full", "strip"])).body.job, null, "a DNP agent never takes an Instax job");
-    const leased = (await claim(["instax"])).body.job;
-    assert.deepEqual([leased.id, leased.printSize], [String(instax._id), "instax"]);
-    await request(app).post(`/api/print-agent/jobs/${instax._id}/complete`)
+    assert.equal((await claim(["full", "strip"])).body.job, null, "a DS-RX1 agent never takes a 20 × 30 job");
+    const leased = (await claim(["large"])).body.job;
+    assert.deepEqual([leased.id, leased.printSize], [String(large._id), "large"]);
+    await request(app).post(`/api/print-agent/jobs/${large._id}/complete`)
       .set({ Authorization: `Bearer ${config.printAgentToken}` })
-      .send({ leaseId: leased.leaseId, sent: true, message: "Đã in 1 tấm ra máy Instax · còn 9 tấm phim." }).expect(200);
-    assert.equal((await PrintJob.findById(instax._id)).spoolMessage, "Đã in 1 tấm ra máy Instax · còn 9 tấm phim.");
+      .send({ leaseId: leased.leaseId, sent: true, message: "Đã gửi 1 tờ ra máy DS820." }).expect(200);
+    assert.equal((await PrintJob.findById(large._id)).spoolMessage, "Đã gửi 1 tờ ra máy DS820.");
     await request(app).post("/api/print-agent/claim").set({ Authorization: `Bearer ${config.printAgentToken}` })
       .send({ branch: "Size branch", printSizes: ["a4"] }).expect(400);
     // Agent vừa nhận lệnh: quản trị thấy chương trình in tự động đang chạy và in được khổ nào.
     const statuses = (await admin.get("/api/admin/print-jobs/printers").expect(200)).body;
     const agent = statuses.find((row) => row.branch === "Size branch").agent;
     assert.equal(agent.running, true);
-    assert.deepEqual(agent.printSizes, ["instax"]);
+    assert.deepEqual(agent.printSizes, ["large"]);
     // In lỗi: lễ tân đang mở trang quản trị nhận cảnh báo ngay (luồng sự kiện print-failed).
-    const failing = await make("instax");
-    const lease = (await claim(["instax"])).body.job;
+    const failing = await make("large");
+    const lease = (await claim(["large"])).body.job;
     const events = [];
     const listen = (job) => events.push(job);
     printEvents.on("print-failed", listen);
     try {
       await request(app).post(`/api/print-agent/jobs/${failing._id}/complete`)
         .set({ Authorization: `Bearer ${config.printAgentToken}` })
-        .send({ leaseId: lease.leaseId, sent: false, message: "Máy Instax hết phim — thay phim rồi bấm In lại." })
+        .send({ leaseId: lease.leaseId, sent: false, message: "Máy DS820 hết giấy — thay giấy rồi bấm In lại." })
         .expect(200);
     } finally {
       printEvents.off("print-failed", listen);
     }
     assert.deepEqual(events.map((job) => [job.code, job.printSize, job.spoolMessage, job.branch]),
-      [["929292", "instax", "Máy Instax hết phim — thay phim rồi bấm In lại.", "Size branch"]]);
+      [["929292", "large", "Máy DS820 hết giấy — thay giấy rồi bấm In lại.", "Size branch"]]);
   } finally {
     config.printAgentToken = previous;
     await PrintJob.deleteMany({ branch: "Size branch" });
@@ -854,7 +854,7 @@ test("a purchased shot limit is enforced on the server, including upload retries
 test("Polaroid ignores legacy shot quotas but still rejects captures after its session ends", async () => {
   const { b, session } = await startSession();
   try {
-    await Booking.updateOne({ _id: b._id }, { source: "polaroid", printSize: "instax", shots: 1 });
+    await Booking.updateOne({ _id: b._id }, { source: "polaroid", printSize: "large", shots: 1 });
     await request(app).post("/api/kiosk/start").send({ captureToken: session.captureToken }).expect(200);
     const image = await jpeg(40, 30);
     for (let i = 0; i < 12; i++) await request(app).post("/api/kiosk/photo")
@@ -1604,7 +1604,7 @@ test("the printed frame's size decides the DNP cut, not the package's", async ()
   // Trang cũ không gửi khổ: theo gói như trước.
   const legacy = await send().expect(201);
   assert.equal((await PrintJob.findById(legacy.body._id)).printSize, "strip");
-  await send("instax").expect(400);
+  await send("large").expect(400);
 });
 test("print sheets sent as raw bytes match the JSON form, so a retry is recognised either way", async () => {
   const { b, token } = await finishedAlbum();

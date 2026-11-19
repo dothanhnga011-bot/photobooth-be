@@ -37,7 +37,7 @@ printsRouter.get("/stream", (req, res) => {
     printEvents.off("print-failed", failed);
   });
 });
-// Tình trạng máy in Instax theo chi nhánh (lễ tân chỉ thấy chi nhánh được phân công).
+// Tình trạng máy in theo chi nhánh / phòng (lễ tân chỉ thấy chi nhánh được phân công).
 printsRouter.get("/printers", async (req, res) => {
   res.json(await listPrinterStatus(staffBranch(req)));
 });

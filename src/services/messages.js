@@ -19,6 +19,7 @@ const LABELS = {
   shots: "Số lần chụp",
   sheets: "Số tờ in thêm",
   extraPrintPrice: "Giá in thêm mỗi tờ",
+  extraSelfboothPrice: "Giá in thêm mỗi tờ 20 × 30",
   description: "Mô tả",
   branch: "Chi nhánh / địa chỉ",
   image: "Ảnh",

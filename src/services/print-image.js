@@ -5,8 +5,6 @@ export const printContentType = (file) => printExtension(file) === "png" ? "imag
 
 // Saved attempts from older kiosks contain 10×15 cm JPEG sheets. New clients
 // send 4×6 inch PNG sheets; validate both without changing their bytes/pixels.
-// An Instax Wide print is one landscape 1260 × 840 px image, the Link WIDE's own size. Prints
-// queued by kiosks before the switch from Instax mini (600 × 800) are still taken: the bridge turns them.
 export async function validatePrintImage(buffer, contentType, printSize = "full") {
   const input = sharp(buffer, { failOn: "warning", limitInputPixels: 9_000_000 });
   const metadata = await input.metadata();
@@ -17,10 +15,7 @@ export async function validatePrintImage(buffer, contentType, printSize = "full"
       (metadata.orientation && metadata.orientation !== 1))
     throw new Error("Ảnh in phải là PNG hoặc JPEG một trang, không xoay bằng metadata.");
   const short = Math.min(width, height), long = Math.max(width, height);
-  if (printSize === "instax") {
-    if (!((width === 1260 && height === 840) || (width === 600 && height === 800)))
-      throw new Error("Tấm Instax Wide phải là ảnh ngang 1260 × 840 px.");
-  } else if (printSize === "large") {
+  if (printSize === "large") {
     // Tờ 20 × 30 cm máy DNP DS820 (phòng Selfbooth): 8 × 12 inch ở 300 điểm / inch, dọc hoặc ngang.
     if (!(short === 2400 && long === 3600))
       throw new Error("Tờ ảnh 20 × 30 phải là 2400 × 3600 px (dọc hoặc ngang).");

@@ -6,7 +6,7 @@ import { config } from "../config.js";
 import { PrintJob } from "../models/index.js";
 import { livePrintFilter, sendMedia } from "../services/media.js";
 import { printContentType } from "../services/print-image.js";
-import { noteAgent, noteRoomAgent, savePrinterStatus, saveRoomPrinterStatus } from "../services/printer-status.js";
+import { noteAgent, noteRoomAgent, saveRoomPrinterStatus } from "../services/printer-status.js";
 import { printEvents } from "../services/print-events.js";
 import { publicJob } from "./print-helpers.js";
 import { fail, id } from "./validation.js";
@@ -65,8 +65,8 @@ printAgentRouter.post("/direct/:token", printBody, async (req, res) => {
 printAgentRouter.post("/claim", async (req, res) => {
   const body = z.object({
     branch: z.string().trim().min(1).max(200).optional(),
-    // Khổ máy in cạnh agent này in được (DNP: full + strip, Instax: instax). Không gửi = mọi khổ.
-    // DS820 (phòng Selfbooth): large.
+    // Khổ máy in cạnh agent này in được (DS-RX1: full + strip, DS820 của phòng Selfbooth: large).
+    // Không gửi = mọi khổ.
     printSizes: z.array(z.enum(PRINT_SIZES)).min(1).max(4).optional(),
   }).parse(req.body);
   const { printSizes } = body;
@@ -128,18 +128,10 @@ printAgentRouter.post("/jobs/:id/complete", async (req, res) => {
   res.json({ spoolStatus: job.spoolStatus });
 });
 
-// Tình trạng máy Instax cạnh agent (mỗi phút và sau mỗi lần in): máy chụp chỉ bán khổ Instax khi
-// máy in còn kết nối và đủ phim.
+// Chương trình in báo còn chạy (mỗi phút); chương trình in của phòng báo kèm tình trạng máy DNP.
 printAgentRouter.post("/status", async (req, res) => {
   const d = z.object({
     branch: z.string().trim().min(1).max(200).optional(),
-    instax: z.object({
-      connected: z.boolean(),
-      film: z.number().int().min(0).max(100).nullable().default(null),
-      battery: z.number().int().min(0).max(100).nullable().default(null),
-      charging: z.boolean().default(false),
-      message: z.string().max(300).default(""),
-    }).optional(),
     // Máy DNP của phòng (chương trình in của phòng báo mỗi phút): tên hàng in Windows, trạng thái,
     // số tờ đang chờ, cách cắt đôi tờ nhỏ (auto: đã tự bật 2inch cut; queue: hàng in cắt đôi riêng,
     // nhân viên bật 2inch cut một lần; none: chưa có — tờ nhỏ ra nguyên tờ, cần tự cắt).
@@ -158,6 +150,6 @@ printAgentRouter.post("/status", async (req, res) => {
     return res.json({ ok: true });
   }
   if (!d.branch) fail(400, "Thiếu chi nhánh của máy in.");
-  await savePrinterStatus(d.branch, d.instax ? { instax: d.instax } : {});
+  await noteAgent(d.branch);
   res.json({ ok: true });
 });

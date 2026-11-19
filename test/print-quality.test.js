@@ -105,7 +105,7 @@ test("600 ppi automatic sheets retain original bytes through binary upload, down
   assert.equal((await Booking.findById(b._id)).printSheets, 1);
   const landscape = await sharp(high).rotate(90).png().toBuffer();
   assert.deepEqual(await validatePrintImage(landscape, 'image/png'), { width: 3600, height: 2400, extension: 'png' });
-  await assert.rejects(validatePrintImage(high, 'image/png', 'instax'), /Instax Wide/);
+  assert.deepEqual(await validatePrintImage(high, 'image/png', 'large'), { width: 2400, height: 3600, extension: 'png' });
 });
 
 test("direct room printing is scoped, leased immediately, never cloud-queued, and never replayed physically", async () => {
@@ -163,22 +163,16 @@ test("corrupt pixels, MIME mismatches, unsupported formats and page sizes never 
   assert.deepEqual(await validatePrintImage(landscape, "image/png"), { width: 1800, height: 1200, extension: "png" });
 });
 
-test("an Instax album prints one 1260 × 840 Wide image per piece and refuses 10 × 15 sheets", async () => {
+test("a Selfbooth album prints 2400 × 3600 sheets and refuses 10 × 15 sheets", async () => {
   const b = await Booking.create({
-    code: String(nextCode++), accessToken: randomUUID(), status: "completed", prints: 2, printSize: "instax",
+    code: String(nextCode++), accessToken: randomUUID(), status: "completed", prints: 2, printSize: "large",
     photos: [{ file: "test-original.jpg", kind: "original" }],
   });
-  const instax = await sharp({ create: { width: 1260, height: 840, channels: 3, background: "#d8b4a0" } })
+  const large = await sharp({ create: { width: 2400, height: 3600, channels: 3, background: "#d8b4a0" } })
     .jpeg({ quality: 92 }).toBuffer();
   const sheet = await post(b, [dataUrl(png, "image/png")]).expect(400);
-  assert.match(sheet.body.message, /Tấm Instax Wide phải là ảnh ngang 1260 × 840 px/);
-  const portrait = await sharp(instax).rotate(90).jpeg().toBuffer();
-  await post(b, [dataUrl(portrait, "image/jpeg")]).expect(400);
-  const printed = await post(b, [dataUrl(instax, "image/jpeg"), dataUrl(instax, "image/jpeg")]).expect(201);
-  assert.deepEqual([printed.body.width, printed.body.height, printed.body.sheetCount], [1260, 840, 2]);
-  // A print queued by a kiosk before the switch from Instax mini still goes through.
-  const mini = await sharp({ create: { width: 600, height: 800, channels: 3, background: "#d8b4a0" } }).jpeg().toBuffer();
-  assert.deepEqual(await validatePrintImage(mini, "image/jpeg", "instax"), { width: 600, height: 800, extension: "jpg" });
-  assert.equal((await PrintJob.findById(printed.body._id)).printSize, "instax");
-  await assert.rejects(validatePrintImage(instax, "image/jpeg"), /Tờ ảnh phải là 1200 × 1800/);
+  assert.match(sheet.body.message, /Tờ ảnh 20 × 30 phải là 2400 × 3600 px/);
+  const printed = await post(b, [dataUrl(large, "image/jpeg"), dataUrl(large, "image/jpeg")]).expect(201);
+  assert.deepEqual([printed.body.width, printed.body.height, printed.body.sheetCount], [2400, 3600, 2]);
+  assert.equal((await PrintJob.findById(printed.body._id)).printSize, "large");
 });

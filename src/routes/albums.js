@@ -276,7 +276,7 @@ export async function submitPrintPack(req, res) {
       try {
         metadata = await validatePrintImage(buffer, `image/${type}`, b.printSize);
       } catch (error) {
-        fail(400, /^(Tờ ảnh|Tấm Instax)/.test(error.message) ? error.message : "Ảnh in không hợp lệ.");
+        fail(400, /^Tờ ảnh/.test(error.message) ? error.message : "Ảnh in không hợp lệ.");
       }
       const { width, height, extension } = metadata;
       const file = mediaReference(token() + "." + extension);
@@ -338,7 +338,7 @@ export async function submitPrintPack(req, res) {
   }
 }
 albumsRouter.post("/:token/print-pack", printLimit, printBody, submitPrintPack);
-// Phòng Selfbooth (Polaroid, khổ Instax): hết giờ chụp, máy chụp hiện QR; khách quét rồi thả tim, làm đẹp, ghép
+// Phòng Selfbooth (tờ 20 × 30): hết giờ chụp, máy chụp hiện QR; khách quét rồi thả tim, làm đẹp, ghép
 // khung và gửi in trên điện thoại trong thời gian chọn ảnh của tiệm. Máy chủ tính giờ từ lần mở đầu tiên —
 // tải lại trang hay mở trên máy khác vẫn cùng một hạn. serverTime: điện thoại bù đồng hồ lệch.
 albumsRouter.post("/:token/edit-start", async (req, res) => {
@@ -389,7 +389,7 @@ albumsRouter.post("/:token/photos", photoBody, async (req, res) => {
   ));
   res.status(201).json(await albumBooking(saved, Date.now(), req.get('X-Photo-Reply') === 'delta' ? { photoKey: d.clientKey } : {}));
 });
-// Album phòng Selfbooth (khổ Instax): khách xoá ảnh như bên Selfbooth — ảnh bị ẩn rồi được dọn cùng ảnh
+// Album phòng Selfbooth (tờ 20 × 30): khách xoá ảnh như bên Selfbooth — ảnh bị ẩn rồi được dọn cùng ảnh
 // hết hạn; các ảnh còn lại đánh số lại 1, 2, 3… trong cùng một lần ghi (không mất ảnh khi điện thoại đang
 // tải ảnh lên cùng lúc). Album phòng Photobooth vẫn chỉ để xem.
 albumsRouter.delete("/:token/photos", async (req, res) => {

@@ -10,7 +10,7 @@ export const printBody = express.raw({ type: "application/octet-stream", limit: 
 
 const MAX_SHEETS = 100;
 // Khổ của khung được in (máy chụp gửi kèm): "strip" = tờ 2 dải, máy DNP cắt đôi; "full" = in nguyên
-// tờ. Không gửi (trang cũ) thì theo khổ của gói. Instax luôn theo gói (máy in riêng).
+// tờ. Không gửi (trang cũ) thì theo khổ của gói. Tờ 20 × 30 của phòng Selfbooth luôn theo gói.
 const SHEET_SIZE = z.enum(["full", "strip"]).optional();
 const MAX_SHEET_BYTES = 36_000_000; // binary 600 ppi PNG; legacy JSON retains its 12 M character limit
 const BASE64_CHUNK = 3 * 64 * 1024; // whole 3-byte groups, so chunked base64 joins up exactly

@@ -90,8 +90,7 @@ const resources = {
         .transform((items) => [...new Set(items)]),
       active,
     }).superRefine((pack, ctx) => {
-      // Gói Polaroid (khổ Instax) như Selfbooth: chụp không giới hạn trong số phút của gói, kèm ít
-      // nhất 1 tấm Instax.
+      // Gói Selfbooth: chụp không giới hạn trong số phút của gói, kèm ít nhất 1 tờ 20 × 30.
       if (isPolaroidSize(pack.printSize)) {
         if (!(pack.prints >= 1))
           ctx.addIssue({ code: "custom", path: ["prints"], message: "gói Selfbooth kèm ít nhất 1 tờ in" });

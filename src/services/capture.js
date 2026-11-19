@@ -340,7 +340,7 @@ export function appendCapture(
           ...(clientKey && { "photos.clientKey": { $ne: clientKey } }),
           ...(imported ? {} : { $expr: { $or: [
             { $eq: ["$source", "polaroid"] },
-            { $in: ["$printSize", ["instax", "large"]] },
+            { $eq: ["$printSize", "large"] },
             { $lt: [
               { $size: { $filter: {
                 input: { $ifNull: ["$photos", []] }, as: "p",

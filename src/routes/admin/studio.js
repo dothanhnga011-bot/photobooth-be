@@ -115,10 +115,10 @@ studioRouter.delete("/screens/:id", admin, async (req, res) => {
 // ─── Thiết lập → Chủ đề ──────────────────────────────────────────────────
 // Chủ đề = các khung cùng “tên bộ chủ đề” (khách chọn cả bộ để ghép). Thông tin riêng của chủ đề
 // (bật / tắt, thứ tự hiện cho khách, chủ đề chưa có khung, loại hình chụp) lưu ở Setting studio.themes.
-// kind: chủ đề của phòng Photobooth (khung 10 × 15) hay phòng Polaroid (khung Instax); chủ đề cũ chưa
+// kind: chủ đề của phòng Photobooth (khung 10 × 15) hay phòng Selfbooth (khung 20 × 30); chủ đề cũ chưa
 // lưu loại thì theo khung trong chủ đề.
 const themeName = z.string().trim().min(1, "Vui lòng nhập tên chủ đề.").max(100);
-// Chủ đề thuộc một loại phòng: Photobooth (khung 10 × 15) hoặc Polaroid (khung Instax), chọn lúc thêm.
+// Chủ đề thuộc một loại phòng: Photobooth (khung 10 × 15) hoặc Selfbooth (khung 20 × 30), chọn lúc thêm.
 const themeKind = z.enum(["photobooth", "polaroid"]);
 const kindOfSize = (printSize) => (isPolaroidSize(printSize) ? "polaroid" : "photobooth");
 const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -227,7 +227,7 @@ studioRouter.put("/themes", admin, async (req, res) => {
   if (!theme) fail(404, "Không tìm thấy chủ đề.");
   if (d.kind && d.kind !== theme.kind) {
     if (theme.sizes.some((size) => kindOfSize(size) !== d.kind))
-      fail(409, `Chủ đề “${theme.name}” đang có khung ${d.kind === "polaroid" ? "khổ 10 × 15" : "khổ Instax"}: chuyển các khung đó sang chủ đề khác trước.`);
+      fail(409, `Chủ đề “${theme.name}” đang có khung ${d.kind === "polaroid" ? "khổ 10 × 15" : "khổ 20 × 30"}: chuyển các khung đó sang chủ đề khác trước.`);
     theme.kind = d.kind;
   }
   if (d.newName && d.newName !== d.name) {
