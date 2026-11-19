@@ -31,6 +31,11 @@ try {
   if (retired.removed.length)
     console.log(`Đã xoá dữ liệu tính năng đã bỏ: ${retired.removed.map((r) => `${r.collection} (${r.documents} bản ghi)`).join(", ")}.`);
   await migrateCounterIndexes();
+  // Không còn Instax (19/11): gói / khung Instax còn sót đổi sang tờ 20 × 30 của phòng Selfbooth.
+  const { retireInstax } = await import("./services/retire-instax.js");
+  const instax = await retireInstax();
+  if (instax.packages || instax.frames)
+    console.log(`Đã đổi ${instax.packages} gói và ${instax.frames} khung Instax sang tờ 20 × 30.`);
   // Bỏ các khung màu cũ: khung giờ chỉ tạo bằng cách import ảnh.
   const { deletedCount } = await Frame.deleteMany({
     $or: [{ image: { $in: [null, ""] } }, { "slots.0": { $exists: false } }],
