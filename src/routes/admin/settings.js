@@ -116,7 +116,8 @@ settingsRouter.put("/custom-filters", admin, async (req, res) => {
 });
 
 // Thời gian khách chọn ảnh & trang trí ở máy chụp sau khi chụp xong (giây). Máy chụp đọc ở danh mục
-// (settings.selectSeconds); chưa đặt thì 250 giây. Cũng là thời gian chỉnh ảnh trên điện thoại của phòng Selfbooth.
+// (settings.selectSeconds); chưa đặt thì 250 giây. Chỉ cho máy chụp phòng Photobooth: phòng Selfbooth chọn ảnh
+// trên điện thoại không tính giờ.
 settingsRouter.put("/select-time", admin, async (req, res) => {
   const { selectSeconds } = z.object({ selectSeconds: z.number().int().min(30).max(900) }).strict().parse(req.body);
   const saved = await Setting.findOneAndUpdate(

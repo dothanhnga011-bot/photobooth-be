@@ -256,7 +256,8 @@ chuông báo) → nhân viên bấm **In 20×30** (cửa sổ in của trình du
 xác nhận thanh toán ở quầy qua `POST /api/admin/tickets`, khách nhập mã 6 số ở kiosk qua `POST /api/kiosk/claim`.
 Mã phải đúng chi nhánh, đúng loại phòng, đã thanh toán và chưa hết hạn 2 giờ. Đường `/api/kiosk/polaroid` cũ chỉ
 khôi phục phiên đang chụp đã tạo trước bản cập nhật, không tạo lượt mới. Chụp xong, khách chọn ảnh, chủ đề và ghép
-khung trên điện thoại (01 Ảnh → 02 Chủ đề → 03 Ghép ảnh → 04 Kết quả); hết giờ chọn thì máy tự in.
+khung trên điện thoại (01 Ảnh → 02 Chủ đề → 03 Ghép ảnh → 04 Kết quả), không tính giờ; chỉ khi khách bấm Gửi in
+thì lệnh in mới lên Hàng chờ in.
 
 Web chỉ in ra DNP. Khách muốn in máy khác thì tải ảnh từ album, AirDrop cho quầy và quầy tự in ngoài web.
 

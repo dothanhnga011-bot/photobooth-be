@@ -896,8 +896,6 @@ test("Selfbooth room: timed 20 x 30 package, its code, the phone's 2400 x 3600 s
     await Booking.updateOne({ _id: opened.booking._id }, { $set: { status: "completed",
       photos: [{ _id: new mongoose.Types.ObjectId(), kind: "original", number: 1, file: "selfbooth-1.jpg" }] } });
     const album = opened.accessToken;
-    // Điện thoại: có thời gian chọn ảnh, xoá được ảnh như Selfbooth.
-    await request(app).post(`/api/albums/${album}/edit-start`).expect(200);
     const sheet = (w, h) => sharp({ create: { width: w, height: h, channels: 3, background: "#f2e6d8" } }).jpeg().toBuffer();
     const send = (sheets, key = randomUUID()) => request(app).post(`/api/albums/${album}/print-pack`)
       .set("Content-Type", "application/octet-stream").set("X-Print-Key", key)

@@ -1,5 +1,5 @@
-// Phòng Selfbooth (Polaroid): khách quét QR rồi chọn ảnh, làm đẹp, ghép khung trên điện thoại trong thời gian
-// chọn ảnh của tiệm (mặc định 250 giây). Máy chủ tính giờ từ lần mở đầu tiên.
+// Phòng Selfbooth: khách quét QR rồi chọn ảnh, làm đẹp, ghép khung trên điện thoại, không tính giờ (như web
+// Selfbooth); bấm Gửi in thì lệnh in lên Hàng chờ in của quầy.
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
@@ -25,40 +25,12 @@ const booking = (accessToken, extra = {}) => Booking.create({
   accessToken, code: String(Math.floor(100000 + Math.random() * 899999)), status: "completed", paid: true,
   printSize: "large", selectCount: 2, prints: 1, photos: [], ...extra,
 });
-const start = (token) => request(app).post(`/api/albums/${token}/edit-start`);
 
-test("the phone gets 250 seconds from its first open, and a reload keeps the same deadline", async () => {
+test("choosing photos on the phone has no time limit: there is no editing deadline to start", async () => {
   await booking("selfbooth-album-one");
-  const first = (await start("selfbooth-album-one").expect(200)).body;
-  const left = new Date(first.editEndsAt) - Date.now();
-  assert.ok(left > 245_000 && left <= 250_000, `left ${left}`);
-  assert.ok(Math.abs(first.serverTime - Date.now()) < 5000);
-  const again = (await start("selfbooth-album-one").expect(200)).body;
-  assert.equal(again.editEndsAt, first.editEndsAt);
-  // Album đọc lại cũng thấy hạn này (điện thoại khác mở cùng QR).
+  await request(app).post("/api/albums/selfbooth-album-one/edit-start").expect(404);
   const read = (await request(app).get("/api/albums/selfbooth-album-one").expect(200)).body;
-  assert.equal(new Date(read.editEndsAt).toISOString(), first.editEndsAt);
-});
-
-test("the shop's selection time (Thời gian chọn ảnh) sets the phone deadline too", async () => {
-  await Setting.updateOne({ key: "studio" }, { $set: { "value.selectSeconds": 300 } }, { upsert: true });
-  try {
-    await booking("selfbooth-album-two");
-    const { editEndsAt } = (await start("selfbooth-album-two").expect(200)).body;
-    const left = new Date(editEndsAt) - Date.now();
-    assert.ok(left > 295_000 && left <= 300_000, `left ${left}`);
-  } finally {
-    await Setting.updateOne({ key: "studio" }, { $unset: { "value.selectSeconds": 1 } });
-  }
-});
-
-test("photobooth albums, sessions still shooting and unknown albums get no phone editing time", async () => {
-  await booking("photobooth-album", { printSize: "full" });
-  assert.match((await start("photobooth-album").expect(409)).body.message, /không chọn ảnh trên điện thoại/);
-  await booking("still-shooting", { status: "checked_in" });
-  assert.match((await start("still-shooting").expect(409)).body.message, /chưa kết thúc/);
-  await start("no-such-album").expect(404);
-  assert.equal((await Booking.findOne({ accessToken: "still-shooting" })).editEndsAt, undefined);
+  assert.equal(read.editEndsAt, undefined);
 });
 
 test("a Selfbooth album lets the guest delete photos (numbers close up); a photobooth album stays view-only", async () => {
