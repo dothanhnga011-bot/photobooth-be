@@ -118,8 +118,8 @@ test("a sharpness test print reaches only that room's printer once and its resul
   await request(app).post(testPath(room._id)).expect(401);
   await request(app).post(testPath(room._id)).set("Cookie", staffCookie).expect(403);
   await request(app).post(testPath("0".repeat(24))).set("Cookie", adminCookie).expect(404);
-  const polaroid = await Room.create({ name: `Polaroid ${randomUUID()}`, branch: "A", kind: "polaroid", active: true });
-  await request(app).post(testPath(polaroid._id)).set("Cookie", adminCookie).expect(409);
+  const selfbooth = await Room.create({ name: `Selfbooth ${randomUUID()}`, branch: "A", kind: "selfbooth", active: true });
+  await request(app).post(testPath(selfbooth._id)).set("Cookie", adminCookie).expect(409);
   assert.equal((await sync().expect(200)).body.sharpnessTest, null);
 
   const created = (await request(app).post(testPath(room._id)).set("Cookie", adminCookie).expect(201)).body;

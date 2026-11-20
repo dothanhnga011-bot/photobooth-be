@@ -295,11 +295,11 @@ test("unpaid drafts have no usable code; activation is idempotent and starts the
 });
 
 test("counter codes require an active photobooth in the selected branch, including legacy issuance", async () => {
-  const onlyPolaroid = await Room.create({ name: "Polaroid only", branch: "Polaroid branch", active: true, kind: "polaroid" });
+  const onlySelfbooth = await Room.create({ name: "Selfbooth only", branch: "Selfbooth branch", active: true, kind: "selfbooth" });
   const inactive = await Room.create({ name: "Inactive booth", branch: "Inactive branch", active: false });
   try {
     for (const target of [
-      { branch: onlyPolaroid.branch }, { room: String(onlyPolaroid._id) },
+      { branch: onlySelfbooth.branch }, { room: String(onlySelfbooth._id) },
       { branch: inactive.branch }, { branch: "No rooms branch" },
     ]) {
       for (const path of ["/api/admin/tickets/draft", "/api/admin/tickets"]) {
@@ -311,7 +311,7 @@ test("counter codes require an active photobooth in the selected branch, includi
       }
     }
   } finally {
-    await Room.deleteMany({ _id: { $in: [onlyPolaroid._id, inactive._id] } });
+    await Room.deleteMany({ _id: { $in: [onlySelfbooth._id, inactive._id] } });
   }
 });
 
@@ -321,7 +321,7 @@ test("a draft cannot charge or release a code after its branch loses the last ac
   try {
     draft = (await admin.post("/api/admin/tickets/draft").send({ branch: booth.branch, package: String(pack._id),
       requestKey: randomUUID(), expectedTotal: pack.price }).expect(201)).body;
-    await Room.updateOne({ _id: booth._id }, { kind: "polaroid" });
+    await Room.updateOne({ _id: booth._id }, { kind: "selfbooth" });
     const rejected = await admin.patch(`/api/admin/tickets/${draft._id}/activate`)
       .send({ paymentReceived: true, paymentMethod: "cash", expectedTotal: pack.price }).expect(400);
     assert.match(rejected.body.message, /chưa có phòng photobooth/);
@@ -524,7 +524,7 @@ test("a room's DNP printer token prints only that room's jobs and reports the pr
   const previous = config.printAgentToken;
   config.printAgentToken = "";
   const other = await Room.create({ name: "Phòng bên", branch: "Test branch", active: true });
-  const polaroid = await Room.create({ name: "Phòng Polaroid", branch: "Test branch", active: true, kind: "polaroid" });
+  const selfbooth = await Room.create({ name: "Phòng Selfbooth", branch: "Test branch", active: true, kind: "selfbooth" });
   const file = `room-agent-${randomUUID()}.jpg`;
   await saveMedia(file, await sharp({ create: { width: 12, height: 18, channels: 3, background: "#cceeaa" } })
     .jpeg().toBuffer(), "image/jpeg");
@@ -534,7 +534,7 @@ test("a room's DNP printer token prints only that room's jobs and reports the pr
     // Chưa có chương trình in của phòng: lệnh in mới chờ nhân viên in tay.
     assert.equal(await initialSpoolStatus(room._id), "idle");
     // Phòng Selfbooth không có chương trình in: nhân viên ở quầy in tờ 20 × 30 ở Hàng chờ in.
-    assert.match((await staff.post(`/api/admin/rooms/${polaroid._id}/printer`).send({}).expect(409)).body.message, /Hàng chờ in/);
+    assert.match((await staff.post(`/api/admin/rooms/${selfbooth._id}/printer`).send({}).expect(409)).body.message, /Hàng chờ in/);
     const issued = (await staff.post(`/api/admin/rooms/${room._id}/printer`).send({}).expect(200)).body;
     assert.deepEqual([issued.name, issued.branch, issued.kind], ["Test room", "Test branch", "photobooth"]);
     const payload = jwt.verify(issued.token, config.secret);
@@ -572,7 +572,7 @@ test("a room's DNP printer token prints only that room's jobs and reports the pr
   } finally {
     config.printAgentToken = previous;
     await PrintJob.deleteMany({ code: "939393" });
-    await Room.deleteMany({ _id: { $in: [other._id, polaroid._id] } });
+    await Room.deleteMany({ _id: { $in: [other._id, selfbooth._id] } });
     await Setting.collection.deleteMany({ key: /^printers:room:/ });
   }
 });
@@ -847,20 +847,20 @@ test("a purchased shot limit is enforced on the server, including upload retries
   }
 });
 
-test("Polaroid ignores legacy shot quotas but still rejects captures after its session ends", async () => {
+test("Selfbooth ignores legacy shot quotas but still rejects captures after its session ends", async () => {
   const { b, session } = await startSession();
   try {
-    await Booking.updateOne({ _id: b._id }, { source: "polaroid", printSize: "large", shots: 1 });
+    await Booking.updateOne({ _id: b._id }, { source: "selfbooth", printSize: "large", shots: 1 });
     await request(app).post("/api/kiosk/start").send({ captureToken: session.captureToken }).expect(200);
     const image = await jpeg(40, 30);
     for (let i = 0; i < 12; i++) await request(app).post("/api/kiosk/photo")
-      .send({ captureToken: session.captureToken, image, clientKey: `polaroid-${i}` }).expect(200);
+      .send({ captureToken: session.captureToken, image, clientKey: `selfbooth-${i}` }).expect(200);
     await request(app).post("/api/kiosk/photo")
-      .send({ captureToken: session.captureToken, image, clientKey: "polaroid-0" }).expect(200);
+      .send({ captureToken: session.captureToken, image, clientKey: "selfbooth-0" }).expect(200);
     assert.equal((await Booking.findById(b._id)).photos.length, 12);
     await Booking.updateOne({ _id: b._id }, { captureEndsAt: new Date(Date.now() - 1000) });
     await request(app).post("/api/kiosk/photo")
-      .send({ captureToken: session.captureToken, image, clientKey: "polaroid-expired" }).expect(409);
+      .send({ captureToken: session.captureToken, image, clientKey: "selfbooth-expired" }).expect(409);
     assert.equal((await Booking.findById(b._id)).photos.length, 12);
   } finally { await Booking.deleteOne({ _id: b._id }); }
 });

@@ -5,8 +5,8 @@
 export const PRINT_SIZES = ["full", "strip", "large"];
 
 // Khổ của phòng Selfbooth: khách chọn ảnh, bộ khung và gửi in trên điện thoại.
-export const isPolaroidSize = (printSize) => printSize === "large";
+export const isSelfboothSize = (printSize) => printSize === "large";
 // Khổ của gói / khung phòng Selfbooth.
-export const POLAROID_SIZE = "large";
+export const SELFBOOTH_SIZE = "large";
 // Tờ 20 × 30 cm ở 300 điểm / inch (như Selfbooth).
 export const LARGE_SHEET = { width: 2400, height: 3600 };

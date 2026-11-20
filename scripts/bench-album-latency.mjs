@@ -102,7 +102,7 @@ try{
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const endpoint=`http://127.0.0.1:${server.address().port}/preview`;
   async function run(variant,scene,index,total=count){
-    const booking=await Booking.create({status:'completed',accessToken:randomUUID(),source:'polaroid'});
+    const booking=await Booking.create({status:'completed',accessToken:randomUUID(),source:'selfbooth'});
     const name=`${variant}-${scene}-${index}`;
     currentRun={variant,scene,booking,name};let firstMs,next=0;
     const prior=new Set(files),start=performance.now();

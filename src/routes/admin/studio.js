@@ -5,7 +5,7 @@ import { admin } from "../../middleware/auth.js";
 import { hashImage, frameThumbUrl } from "../../services/frame-image.js";
 import { withFrameCatalogLock } from "../../services/frame-order.js";
 import { fail, id } from "../validation.js";
-import { isPolaroidSize } from "../../print-sizes.js";
+import { isSelfboothSize } from "../../print-sizes.js";
 
 export const studioRouter = Router();
 
@@ -119,8 +119,8 @@ studioRouter.delete("/screens/:id", admin, async (req, res) => {
 // lưu loại thì theo khung trong chủ đề.
 const themeName = z.string().trim().min(1, "Vui lòng nhập tên chủ đề.").max(100);
 // Chủ đề thuộc một loại phòng: Photobooth (khung 10 × 15) hoặc Selfbooth (khung 20 × 30), chọn lúc thêm.
-const themeKind = z.enum(["photobooth", "polaroid"]);
-const kindOfSize = (printSize) => (isPolaroidSize(printSize) ? "polaroid" : "photobooth");
+const themeKind = z.enum(["photobooth", "selfbooth"]);
+const kindOfSize = (printSize) => (isSelfboothSize(printSize) ? "selfbooth" : "photobooth");
 const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const sameName = (name) => new RegExp(`^\\s*${escape(name)}\\s*$`);
 const storedThemes = async () =>
@@ -187,7 +187,7 @@ async function listThemes() {
       return {
         name,
         // Chủ đề cũ chưa lưu loại phòng: suy ra từ khổ các khung trong chủ đề (chưa có khung: Photobooth).
-        kind: meta?.kind || (sizes.length && sizes.every((size) => kindOfSize(size) === "polaroid") ? "polaroid" : "photobooth"),
+        kind: meta?.kind || (sizes.length && sizes.every((size) => kindOfSize(size) === "selfbooth") ? "selfbooth" : "photobooth"),
         active: meta?.active ?? true,
         order: meta ? meta.index : stored.length + names.indexOf(name),
         frames: group?.frames || 0,
@@ -227,7 +227,7 @@ studioRouter.put("/themes", admin, async (req, res) => {
   if (!theme) fail(404, "Không tìm thấy chủ đề.");
   if (d.kind && d.kind !== theme.kind) {
     if (theme.sizes.some((size) => kindOfSize(size) !== d.kind))
-      fail(409, `Chủ đề “${theme.name}” đang có khung ${d.kind === "polaroid" ? "khổ 10 × 15" : "khổ 20 × 30"}: chuyển các khung đó sang chủ đề khác trước.`);
+      fail(409, `Chủ đề “${theme.name}” đang có khung ${d.kind === "selfbooth" ? "khổ 10 × 15" : "khổ 20 × 30"}: chuyển các khung đó sang chủ đề khác trước.`);
     theme.kind = d.kind;
   }
   if (d.newName && d.newName !== d.name) {

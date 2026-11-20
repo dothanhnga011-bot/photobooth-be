@@ -18,7 +18,7 @@ const LIST_OMIT = "-photos -cashBills -extraSales -captureSeenAt -captureStarted
 // Số đơn chờ thu tiền, hiện cạnh mục "Đơn hàng" trên thanh bên quản trị:
 // - phiếu quầy tạo hôm nay mà nhân viên chưa bấm "Xác nhận đã thu" (phiếu bỏ dở từ hôm trước không tính
 //   nữa, để con số không treo mãi);
-// - lượt Polaroid cũ (khách chọn layout ở máy, trả ở quầy) chưa bấm "Đã thu tiền".
+// - lượt Selfbooth cũ (khách chọn layout ở máy, trả ở quầy) chưa bấm "Đã thu tiền".
 // Lễ tân chỉ đếm đơn của chi nhánh được phân công.
 bookingsRouter.get("/bookings/awaiting-payment", async (req, res) => {
   const assigned = staffBranch(req);
@@ -28,7 +28,7 @@ bookingsRouter.get("/bookings/awaiting-payment", async (req, res) => {
     paid: false,
     $or: [
       { source: "counter", status: "pending", date: today() },
-      { source: "polaroid", status: { $in: ["checked_in", "completed"] } },
+      { source: "selfbooth", status: { $in: ["checked_in", "completed"] } },
     ],
   });
   res.json({ count });
@@ -130,7 +130,7 @@ bookingsRouter.patch("/bookings/:id", async (req, res) => {
         .optional(),
       printed: z.boolean().optional(),
       paymentReceived: z.boolean().optional(),
-      // Lượt chụp phòng Polaroid trả tiền ở quầy: nhân viên ghi nhận đã thu (tiền mặt / chuyển khoản).
+      // Lượt chụp phòng Selfbooth trả tiền ở quầy: nhân viên ghi nhận đã thu (tiền mặt / chuyển khoản).
       collected: z.enum(["cash", "transfer"]).optional(),
     })
     .parse(req.body);
@@ -155,7 +155,7 @@ bookingsRouter.patch("/bookings/:id", async (req, res) => {
     fail(409, "Vui lòng kích hoạt mã tại quầy sau khi nhận tiền.");
   if (d.printed !== undefined && b.status !== "completed")
     fail(400, "Phiên chụp chưa hoàn tất.");
-  if (d.collected && (b.paid || b.source !== "polaroid" || !["checked_in", "completed"].includes(b.status)))
+  if (d.collected && (b.paid || b.source !== "selfbooth" || !["checked_in", "completed"].includes(b.status)))
     fail(409, b.paid ? "Đơn này đã thu tiền." : "Chỉ ghi nhận thu tiền ở quầy cho lượt chụp phòng Selfbooth.");
   const { paymentReceived, collected, ...changes } = d;
   if (collected) {

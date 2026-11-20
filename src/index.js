@@ -36,6 +36,11 @@ try {
   const legacy = await migrateLegacyPrintData();
   if (Object.values(legacy).some(Boolean))
     console.log(`Đã đổi khổ in cũ sang tờ 20 × 30: ${JSON.stringify(legacy)}.`);
+  // Tên cũ của phòng thứ hai (20/11): phòng, chủ đề, đơn và chữ máy chụp đã lưu đổi sang "selfbooth".
+  const { migrateSelfboothNames } = await import("./services/legacy-selfbooth-names.js");
+  const renamed = await migrateSelfboothNames();
+  if (Object.values(renamed).some(Boolean))
+    console.log(`Đã đổi tên cũ sang selfbooth: ${JSON.stringify(renamed)}.`);
   // Bỏ các khung màu cũ: khung giờ chỉ tạo bằng cách import ảnh.
   const { deletedCount } = await Frame.deleteMany({
     $or: [{ image: { $in: [null, ""] } }, { "slots.0": { $exists: false } }],

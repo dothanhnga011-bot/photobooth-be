@@ -21,8 +21,8 @@ before(async()=>{
   config.dnpPrinter='';config.printAgentToken='queue-agent-test-token-0000000000000000';
   memory=await MongoMemoryServer.create();await mongoose.connect(memory.getUri());
   await Promise.all(Object.values(mongoose.models).map(model=>model.init()));
-  rooms=await Room.create([{name:'Selfbooth XT3 BN',branch:BN,kind:'polaroid',active:true},
-    {name:'Selfbooth XS20 BG',branch:BG,kind:'polaroid',active:true}]);
+  rooms=await Room.create([{name:'Selfbooth XT3 BN',branch:BN,kind:'selfbooth',active:true},
+    {name:'Selfbooth XS20 BG',branch:BG,kind:'selfbooth',active:true}]);
   const users=await User.create([{name:'Admin',email:'queue-admin@local.test',password:'unused',role:'admin'},
     {name:'Quầy BN',email:'queue-bn@local.test',password:'unused',role:'staff',branch:BN},
     {name:'Quầy BG',email:'queue-bg@local.test',password:'unused',role:'staff',branch:BG}]);

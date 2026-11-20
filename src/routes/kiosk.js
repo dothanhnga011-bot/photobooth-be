@@ -8,7 +8,7 @@ import { z } from "zod";
 import { config } from "../config.js";
 import { Booking, Room, Package, KioskAttempt, Setting } from "../models/index.js";
 import { extraPriceFor, minSheets, piecesPerSheet, saleTotal } from "./print-count.js";
-import { isPolaroidSize, POLAROID_SIZE } from "../print-sizes.js";
+import { isSelfboothSize, SELFBOOTH_SIZE } from "../print-sizes.js";
 import { appendCapture, finishCapture } from "../services/capture.js";
 import { timed, saveImageTask } from "../services/image-save-queue.js";
 import { directUploadRequest, photoBody, readPhotoUpload, storedOriginal } from "./photo-upload.js";
@@ -129,7 +129,7 @@ kioskRouter.post("/sale", sensitive({ key: kioskDeviceKey }), async (req, res) =
     return res.json(saleSession(existing, room, existing.captureSession));
   }
   await rejectArchivedSale(d.requestKey);
-  if (room.kind === "polaroid")
+  if (room.kind === "selfbooth")
     fail(403, "Phòng Selfbooth không thu tiền tại máy — khách mua gói và trả tiền ở quầy.");
   if (d.skip && !room.paymentTest)
     fail(403, "Phòng chưa bật chế độ thử (bỏ qua đút tiền). Bật ở Quản trị → Quản lý máy.");
@@ -137,7 +137,7 @@ kioskRouter.post("/sale", sensitive({ key: kioskDeviceKey }), async (req, res) =
   if (!pack) fail(400, "Gói chụp không còn hoạt động.");
   if (pack.branches?.length && !pack.branches.includes(room.branch))
     fail(400, `Gói “${pack.name}” không áp dụng tại chi nhánh ${room.branch}.`);
-  if (isPolaroidSize(pack.printSize))
+  if (isSelfboothSize(pack.printSize))
     fail(400, "Gói Selfbooth bán ở quầy cho phòng Selfbooth, không bán ở phòng photobooth.");
   const least = minSheets(pack);
   const sheets = d.prints ?? least;
@@ -205,27 +205,6 @@ kioskRouter.post("/sale", sensitive({ key: kioskDeviceKey }), async (req, res) =
   }
   fail(503, "Không tạo được lượt chụp. Vui lòng thử lại.");
 });
-// Legacy replay only: new Polaroid sessions require a paid counter code.
-kioskRouter.post("/polaroid", sensitive({ key: kioskDeviceKey }), async (req, res) => {
-  const d = z.object({
-    device: z.string().max(2000),
-    package: z.string().regex(/^[a-f\d]{24}$/i),
-    requestKey: z.uuid(),
-  }).parse(req.body);
-  const room = await deviceRoom(d.device);
-  const existing = await Booking.findOne({ requestKey: d.requestKey }).select("+accessToken +captureSession");
-  if (existing) {
-    if (String(existing.room) !== String(room._id)) fail(409, "Mã giao dịch đã dùng ở máy khác.");
-    if (existing.source !== "polaroid" || existing.status !== "checked_in")
-      fail(410, "Phòng Selfbooth dùng mã chụp đã thanh toán tại quầy.");
-    if (!existing.captureSession) fail(409, "Lượt chụp này đã kết thúc.");
-    return res.json(saleSession(existing, room, existing.captureSession));
-  }
-  await rejectArchivedSale(d.requestKey);
-  if (room.kind !== "polaroid")
-    fail(403, "Đây là phòng photobooth — khách chọn Nhập mã hoặc Tiền mặt. Đổi loại phòng ở Quản trị → Quản lý máy.");
-  fail(410, "Phòng Selfbooth dùng mã chụp đã thanh toán tại quầy. Vui lòng tải lại kiosk rồi nhập mã 6 số.");
-});
 const saleSession = (b, room, sessionId) => ({
   flip: room.flip || "device",
   booking: publicBooking(b),
@@ -260,13 +239,13 @@ kioskRouter.post("/claim", sensitive({ key: kioskDeviceKey }), async (req, res) 
     res.set("Retry-After", String(seconds));
     fail(429, `Nhập sai 5 lần. Vui lòng chờ ${Math.ceil(seconds / 60)} phút rồi thử lại.`);
   }
-  const polaroidRoom = room.kind === "polaroid";
+  const selfboothRoom = room.kind === "selfbooth";
   const validCode = {
     code: d.code,
     paid: true,
     status: "confirmed",
     branch: room.branch,
-    printSize: polaroidRoom ? POLAROID_SIZE : { $ne: POLAROID_SIZE },
+    printSize: selfboothRoom ? SELFBOOTH_SIZE : { $ne: SELFBOOTH_SIZE },
     $or: [
       { codeExpiresAt: { $gt: new Date() } },
       { codeExpiresAt: { $exists: false }, createdAt: { $gt: new Date(Date.now() - 2 * 60 * 60 * 1000) } },
@@ -294,8 +273,8 @@ kioskRouter.post("/claim", sensitive({ key: kioskDeviceKey }), async (req, res) 
     const expiresAt = other?.codeExpiresAt || (other?.createdAt && new Date(other.createdAt.getTime() + 2 * 60 * 60 * 1000));
     if (other?.status === "confirmed" && expiresAt > new Date() && other.branch !== room.branch)
       fail(400, `Mã chụp thuộc chi nhánh “${other.branch}”, nhưng máy này ở chi nhánh “${room.branch}”. Nhờ nhân viên kiểm tra chi nhánh khi cấp mã.`);
-    if (other?.status === "confirmed" && expiresAt > new Date() && isPolaroidSize(other.printSize) !== polaroidRoom)
-      fail(400, polaroidRoom
+    if (other?.status === "confirmed" && expiresAt > new Date() && isSelfboothSize(other.printSize) !== selfboothRoom)
+      fail(400, selfboothRoom
         ? "Mã này dành cho phòng Photobooth. Mời bạn sang phòng Photobooth để chụp, hoặc nhờ nhân viên đổi mã."
         : "Mã này dành cho phòng Selfbooth. Mời bạn sang phòng Selfbooth để chụp, hoặc nhờ nhân viên đổi mã.");
     const failed = await registerInvalidCode(deviceKey);
@@ -327,7 +306,7 @@ kioskRouter.post("/start", async (req, res) => {
   const d = z.object({ captureToken: z.string() }).parse(req.body);
   const { b, payload } = await captureBooking(d.captureToken);
   if (!b.captureStartedAt && b.status === "checked_in") {
-    // Thời gian chụp theo bảng giá lúc khách bắt đầu chụp (Khổ ảnh & bảng giá), cả gói Polaroid: sửa thời
+    // Thời gian chụp theo bảng giá lúc khách bắt đầu chụp (Khổ ảnh & bảng giá), cả gói Selfbooth: sửa thời
     // gian của gói thì mã đã bán mà chưa chụp cũng theo. Gói đã xoá: giữ thời gian lúc bán (vé cũ không
     // có thì 10 phút).
     const current = b.package && (await Package.findById(b.package).select("duration").lean())?.duration;

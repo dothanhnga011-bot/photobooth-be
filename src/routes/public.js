@@ -17,7 +17,7 @@ import {
 } from "../services/frame-image.js";
 import { catalogCache } from "../services/read-cache.js";
 import { screenListItem } from "./admin/studio.js";
-import { polaroidPackage } from "../polaroid-layouts.js";
+import { selfboothPackage } from "../selfbooth-package.js";
 
 export const publicRouter = Router();
 
@@ -146,7 +146,7 @@ async function buildCatalog() {
   const hidden = new Set((settings.themes || []).filter((t) => t.active === false).map((t) => t.name));
   return {
     rooms,
-    packages: packages.map(polaroidPackage),
+    packages: packages.map(selfboothPackage),
     frames: frames.filter((f) => !hidden.has(f.themeName?.trim())).map(frameListItem),
     screens: screens.map(screenListItem),
     stickers: stickers.map(stickerListItem),

@@ -9,7 +9,7 @@ import { config } from '../src/config.js';
 import { Room, User } from '../src/models/index.js';
 
 let memory, admin, owner;
-const room = name => ({ name, description: '', kind: 'polaroid', flip: 'on', active: true });
+const room = name => ({ name, description: '', kind: 'selfbooth', flip: 'on', active: true });
 before(async () => {
   config.secret = 'room-form-test-secret-not-for-production';
   memory = await MongoMemoryServer.create();
@@ -28,7 +28,7 @@ after(async () => { await mongoose.disconnect(); await memory?.stop(); });
 test('the first machine can be created without a branch field', async () => {
   const created = (await admin.post('/api/admin/rooms').send(room('Máy đầu tiên')).expect(200)).body;
   assert.equal(created.branch, 'Mặc định');
-  assert.equal(created.kind, 'polaroid');
+  assert.equal(created.kind, 'selfbooth');
 });
 
 test('new machines inherit an active machine, while edits without a branch preserve the stored value', async () => {

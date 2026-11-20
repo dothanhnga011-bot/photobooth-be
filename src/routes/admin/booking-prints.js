@@ -11,7 +11,7 @@ import { printEvents } from "../../services/print-events.js";
 import { publicJob } from "../print-helpers.js";
 import { printBody, readPrintPack } from "../print-upload.js";
 import { fail, id, token } from "../validation.js";
-import { isPolaroidSize } from "../../print-sizes.js";
+import { isSelfboothSize } from "../../print-sizes.js";
 
 export const bookingPrintsRouter = Router();
 
@@ -61,7 +61,7 @@ bookingPrintsRouter.post("/bookings/:id/reprint", allow("print:operate"), async 
   if (previous) return respond(res, previous, booking);
   const source = await PrintJob.findOne({ _id: d.jobId, booking: booking._id, ...livePrintFilter() });
   if (!source) fail(404, "File in không còn hoặc đã hết hạn lưu trữ.");
-  if (isPolaroidSize(source.printSize))
+  if (isSelfboothSize(source.printSize))
     fail(400, "Tờ 20 × 30 của phòng Selfbooth in ở Hàng chờ in (máy DNP DS820 ở quầy), không tạo lệnh in lại.");
   if (d.delivery === "local" && (source.sheets?.length || 1) * d.copies > 20)
     fail(400, "Mỗi lượt hỗ trợ tối đa 20 tờ in.");
@@ -91,7 +91,7 @@ bookingPrintsRouter.post("/bookings/:id/reprint", allow("print:operate"), async 
 // A manually composed recovery sheet is archived after local output, without charging the album.
 bookingPrintsRouter.post("/bookings/:id/print-file", allow("print:operate"), printBody, async (req, res) => {
   const booking = await bookingFor(req, true);
-  if (isPolaroidSize(booking.printSize)) fail(400, "Tờ 20 × 30 của phòng Selfbooth in ở Hàng chờ in (máy DNP DS820 ở quầy).");
+  if (isSelfboothSize(booking.printSize)) fail(400, "Tờ 20 × 30 của phòng Selfbooth in ở Hàng chờ in (máy DNP DS820 ở quầy).");
   const d = readPrintPack(req);
   const copies = z.coerce.number().int().min(1).max(20).parse(req.get("X-Print-Copies") || 1);
   if (d.sheets.length * copies > 20) fail(400, "Mỗi lượt hỗ trợ tối đa 20 tờ in.");

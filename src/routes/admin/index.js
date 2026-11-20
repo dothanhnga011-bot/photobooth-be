@@ -31,7 +31,7 @@ adminRouter.use(bookingPrintsRouter);
 adminRouter.use("/stats", statsRouter);
 adminRouter.use("/storage", storageRouter);
 
-// Cài máy chụp: cấp liên kết + QR mở máy chụp của phòng. Loại phòng (Photobooth / Polaroid) chọn lúc
+// Cài máy chụp: cấp liên kết + QR mở máy chụp của phòng. Loại phòng (Photobooth / Selfbooth) chọn lúc
 // quản trị thêm phòng và không đổi ở đây; phòng Photobooth bật / tắt chế độ thử đút tiền (paymentTest)
 // — chỉ quản trị viên, vì lượt chụp thử không thu tiền. Không gửi paymentTest thì giữ nguyên.
 const deviceSetup = z.object({ paymentTest: z.boolean().optional() });
@@ -42,7 +42,7 @@ adminRouter.post("/rooms/:id/device", allow("rooms:setup"), async (req, res) => 
   requireBranch(req, room.branch);
   const d = deviceSetup.parse(req.body || {});
   if (d.paymentTest !== undefined) {
-    // Chế độ thử (nút giả lập đút tiền) chỉ có ở phòng photobooth (phòng Polaroid không thu tiền).
+    // Chế độ thử (nút giả lập đút tiền) chỉ có ở phòng photobooth (phòng Selfbooth không thu tiền).
     const paymentTest = (room.kind || "photobooth") === "photobooth" && d.paymentTest;
     if (Boolean(room.paymentTest) !== paymentTest) {
       if (!isAdmin(req)) fail(403, "Chỉ quản trị viên được bật / tắt chế độ thử tiền mặt.");
@@ -69,7 +69,7 @@ adminRouter.post("/rooms/:id/printer", allow("rooms:setup"), async (req, res) =>
   if (!room) fail(404, "Không tìm thấy phòng.");
   if (!room.active) fail(409, "Phòng chụp đã ngừng hoạt động.");
   requireBranch(req, room.branch);
-  if (room.kind === "polaroid")
+  if (room.kind === "selfbooth")
     fail(409, "Phòng Selfbooth không cần chương trình in: nhân viên ở quầy in tờ 20 × 30 ở trang Hàng chờ in.");
   res.json({
     name: room.name,

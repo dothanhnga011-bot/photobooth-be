@@ -3,7 +3,7 @@
 // khi máy chủ khởi động. Lệnh in cũ đang chờ thì dừng để nhân viên xem lại (ảnh cũ không đúng tờ 20 × 30).
 // Giá in thêm cũ của phòng thứ hai chuyển sang giá in thêm tờ 20 × 30. Chạy lại nhiều lần không sao.
 import { Booking, Frame, Package, PrintJob, Setting } from "../models/index.js";
-import { POLAROID_SIZE, PRINT_SIZES } from "../print-sizes.js";
+import { SELFBOOTH_SIZE, PRINT_SIZES } from "../print-sizes.js";
 
 const legacy = { printSize: { $exists: true, $nin: [...PRINT_SIZES, null] } };
 // Tên cũ của giá in thêm phòng thứ hai, chỉ để đổi tên trường đã lưu.
@@ -15,7 +15,7 @@ export async function migrateLegacyPrintData() {
     { $set: { spoolStatus: "failed", spoolMessage: "Khổ in cũ đã bỏ: kiểm tra lại rồi in từ Đơn hàng nếu cần." } },
   );
   const [packages, frames, bookings, printJobs] = await Promise.all([Package, Frame, Booking, PrintJob]
-    .map((model) => model.collection.updateMany(legacy, { $set: { printSize: POLAROID_SIZE } })));
+    .map((model) => model.collection.updateMany(legacy, { $set: { printSize: SELFBOOTH_SIZE } })));
   const price = await Setting.collection.updateOne(
     { key: "studio", [OLD_EXTRA_PRICE]: { $exists: true } },
     { $rename: { [OLD_EXTRA_PRICE]: "value.extraSelfboothPrice" } },

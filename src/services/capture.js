@@ -10,7 +10,7 @@ import { saveImageTask, savePreviewTask } from "./image-save-queue.js";
 import { schedulePrintSource } from "./print-source.js";
 import { schedulePhotoDownload } from "./photo-download-warm.js";
 import { inspectStoredOriginal } from "./direct-upload.js";
-import { isPolaroidSize } from "../print-sizes.js";
+import { isSelfboothSize } from "../print-sizes.js";
 
 const locks = new Map();
 export function captureLock(id, action) {
@@ -339,7 +339,7 @@ export function appendCapture(
           status: imported ? "completed" : "checked_in",
           ...(clientKey && { "photos.clientKey": { $ne: clientKey } }),
           ...(imported ? {} : { $expr: { $or: [
-            { $eq: ["$source", "polaroid"] },
+            { $eq: ["$source", "selfbooth"] },
             { $eq: ["$printSize", "large"] },
             { $lt: [
               { $size: { $filter: {
@@ -368,7 +368,7 @@ export function appendCapture(
             .filter((f) => !kept.has(f)));
           return b;
         }
-        if (!imported && b.source !== "polaroid" && !isPolaroidSize(b.printSize) && Number.isFinite(b.shots) &&
+        if (!imported && b.source !== "selfbooth" && !isSelfboothSize(b.printSize) && Number.isFinite(b.shots) &&
           b.photos.filter((p) => p.kind === "original" && !p.deleted).length >= b.shots)
           throw captureError(409, `Đã chụp đủ ${b.shots} ảnh của gói.`);
         throw captureError(409, "Phiên chụp đã kết thúc.");

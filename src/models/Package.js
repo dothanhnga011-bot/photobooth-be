@@ -9,7 +9,7 @@ const packageSchema = new mongoose.Schema(
     duration: Number,
     shots: Number,
     prints: Number,
-    // Cũ: đếm ngược khi phòng Polaroid tự chụp. Giờ mọi phòng chụp bằng dây bấm, không còn dùng.
+    // Cũ: đếm ngược khi phòng Selfbooth tự chụp. Giờ mọi phòng chụp bằng dây bấm, không còn dùng.
     countdownSeconds: { type: Number, default: 10 },
     // Số ảnh khách chọn để ghép khung trên máy chụp (vd. gói 70k chọn 4 tấm).
     selectCount: { type: Number, default: 4 },

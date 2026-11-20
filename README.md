@@ -254,8 +254,8 @@ khách bấm Gửi in trên điện thoại → lệnh in vào trang **Hàng ch�
 chuông báo) → nhân viên bấm **In 20×30** (cửa sổ in của trình duyệt, giấy 8 × 12 inch), nhận ảnh rồi bấm **Đã in**
 (`PATCH /api/admin/print-jobs/:id`). Phòng này không cài chương trình in. Máy ảnh: Fujifilm X-T3 / X-S10 / X-S20. Khung: Quản trị → Khung ảnh → chép khung từ Selfbooth hoặc Thêm mới (khổ 20 × 30). Nhân viên bán gói và
 xác nhận thanh toán ở quầy qua `POST /api/admin/tickets`, khách nhập mã 6 số ở kiosk qua `POST /api/kiosk/claim`.
-Mã phải đúng chi nhánh, đúng loại phòng, đã thanh toán và chưa hết hạn 2 giờ. Đường `/api/kiosk/polaroid` cũ chỉ
-khôi phục phiên đang chụp đã tạo trước bản cập nhật, không tạo lượt mới. Chụp xong, khách chọn ảnh, chủ đề và ghép
+Mã phải đúng chi nhánh, đúng loại phòng, đã thanh toán và chưa hết hạn 2 giờ.
+Chụp xong, khách chọn ảnh, chủ đề và ghép
 khung trên điện thoại (01 Ảnh → 02 Chủ đề → 03 Ghép ảnh → 04 Kết quả), không tính giờ; chỉ khi khách bấm Gửi in
 thì lệnh in mới lên Hàng chờ in.
 

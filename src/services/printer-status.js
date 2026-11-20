@@ -75,7 +75,7 @@ export async function listPrinterStatus(branch) {
       .map((row) => ({ branch: row.key.slice("printers:".length), ...describe(row.value) })),
     ...roomRows
       // Phòng đã xoá / ngừng hoạt động, hoặc phòng Selfbooth (in ở quầy, không có chương trình in): không hiện.
-      .filter((row) => { const room = names.get(row.value?.room); return room && room.active !== false && room.kind !== "polaroid"; })
+      .filter((row) => { const room = names.get(row.value?.room); return room && room.active !== false && room.kind !== "selfbooth"; })
       .map((row) => ({
         branch: row.value.branch || "",
         room: row.value.room,

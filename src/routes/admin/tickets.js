@@ -8,7 +8,7 @@ import { bookingLimit } from "../../middleware/rate-limits.js";
 import { fail, id, phone, token, today } from "../validation.js";
 import { publicBooking } from "../booking-helpers.js";
 import { SELFBOOTH_MIN_SHEETS } from "../print-count.js";
-import { isPolaroidSize } from "../../print-sizes.js";
+import { isSelfboothSize } from "../../print-sizes.js";
 
 export const ticketsRouter = Router();
 const CODE_LIFETIME_MS = 2 * 60 * 60 * 1000;
@@ -16,18 +16,18 @@ const CODE_LIFETIME_MS = 2 * 60 * 60 * 1000;
 // Mã chụp của gói photobooth (in DNP) chỉ nhập ở phòng photobooth; mã của gói Selfbooth (tờ 20 × 30)
 // chỉ nhập ở phòng Selfbooth. Không cấp mã ở chi nhánh không có phòng đúng loại để nhập.
 async function requireCounterRoom(branch, room, pack) {
-  const polaroid = isPolaroidSize(pack.printSize);
-  const kind = polaroid ? "Selfbooth" : "photobooth";
+  const selfbooth = isSelfboothSize(pack.printSize);
+  const kind = selfbooth ? "Selfbooth" : "photobooth";
   // Older rooms without a kind are photobooths.
-  if (room && (room.kind === "polaroid") !== polaroid)
-    fail(400, polaroid ? "Gói Selfbooth chỉ dùng ở phòng Selfbooth." : "Phòng Selfbooth chỉ nhận mã của gói Selfbooth.");
-  if (!await Room.exists({ branch, active: true, kind: polaroid ? "polaroid" : { $ne: "polaroid" } }))
+  if (room && (room.kind === "selfbooth") !== selfbooth)
+    fail(400, selfbooth ? "Gói Selfbooth chỉ dùng ở phòng Selfbooth." : "Phòng Selfbooth chỉ nhận mã của gói Selfbooth.");
+  if (!await Room.exists({ branch, active: true, kind: selfbooth ? "selfbooth" : { $ne: "selfbooth" } }))
     fail(400, `Chi nhánh “${branch}” chưa có phòng ${kind} đang hoạt động để nhập mã. Vui lòng chọn đúng chi nhánh hoặc kiểm tra loại phòng trong Quản lý máy.`);
 }
 // Lượt chụp theo gói. Gói Selfbooth: bấm dây không giới hạn trong số phút của gói, in số tờ 20 × 30
 // của gói; khách chọn ảnh và bộ khung trên điện thoại.
 function captureTerms(pack) {
-  if (!isPolaroidSize(pack.printSize))
+  if (!isSelfboothSize(pack.printSize))
     return { shots: pack.shots, captureDuration: pack.duration, prints: pack.prints, selectCount: pack.selectCount || 4,
       printSize: pack.printSize || "full" };
   return { captureDuration: Number(pack.duration) || 10, prints: Math.max(SELFBOOTH_MIN_SHEETS, Number(pack.prints) || 0),
@@ -136,7 +136,7 @@ ticketsRouter.patch("/:id/activate", auth, async (req, res) => {
     return res.json({ ...publicBooking(draft), accessToken: draft.accessToken });
   if (draft.status !== "pending" || draft.paid)
     fail(409, "Mã này không thể kích hoạt.");
-  // Phiếu lưu khổ in của gói: phiếu Polaroid cần phòng Polaroid, phiếu photobooth cần phòng photobooth.
+  // Phiếu lưu khổ in của gói: phiếu Selfbooth cần phòng Selfbooth, phiếu photobooth cần phòng photobooth.
   await requireCounterRoom(draft.branch, null, draft);
   const currentPackage = await Package.findById(draft.package).select("price active").lean();
   if (!currentPackage?.active || currentPackage.price !== draft.total)

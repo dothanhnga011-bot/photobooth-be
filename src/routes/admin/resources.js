@@ -5,9 +5,9 @@ import { User, Room, Package, Frame, Sticker } from "../../models/index.js";
 import { admin, isAdmin, RETIRED_PERMISSIONS, staffBranch, STAFF_PERMISSIONS } from "../../middleware/auth.js";
 import { fail, id, text, priceVND } from "../validation.js";
 import { leastSheets } from "../print-count.js";
-import { polaroidPackage } from "../../polaroid-layouts.js";
+import { selfboothPackage } from "../../selfbooth-package.js";
 import { moveFrame, withFrameCatalogLock } from "../../services/frame-order.js";
-import { isPolaroidSize, PRINT_SIZES } from "../../print-sizes.js";
+import { isSelfboothSize, PRINT_SIZES } from "../../print-sizes.js";
 import {
   FRAME_LIST_FIELDS,
   frameListItem,
@@ -65,7 +65,7 @@ const resources = {
       expiresAt: z.string().date().or(z.literal("")).nullable().default(null),
       flip: z.enum(["device", "on", "off"]).default("device"),
       // Loại phòng chọn lúc thêm phòng; sửa phòng không gửi thì giữ nguyên.
-      kind: z.enum(["photobooth", "polaroid"]).optional(),
+      kind: z.enum(["photobooth", "selfbooth"]).optional(),
       payment: z.enum(["counter", "cash"]).optional(),
       paymentTest: z.boolean().optional(),
       active,
@@ -91,7 +91,7 @@ const resources = {
       active,
     }).superRefine((pack, ctx) => {
       // Gói Selfbooth: chụp không giới hạn trong số phút của gói, kèm ít nhất 1 tờ 20 × 30.
-      if (isPolaroidSize(pack.printSize)) {
+      if (isSelfboothSize(pack.printSize)) {
         if (!(pack.prints >= 1))
           ctx.addIssue({ code: "custom", path: ["prints"], message: "gói Selfbooth kèm ít nhất 1 tờ in" });
         return;
@@ -107,8 +107,8 @@ const resources = {
             ? "khổ nhỏ kèm ít nhất 1 tờ 10 × 15 (cắt đôi = 2 tờ nhỏ)"
             : "khổ to kèm ít nhất 2 tờ",
         });
-    }).transform((pack) => polaroidPackage({
-      ...pack, selectCount: pack.selectCount ?? (isPolaroidSize(pack.printSize) ? 1 : 4),
+    }).transform((pack) => selfboothPackage({
+      ...pack, selectCount: pack.selectCount ?? (isSelfboothSize(pack.printSize) ? 1 : 4),
     })),
   ],
   frames: [
@@ -213,7 +213,7 @@ for (const [route, [Model, schema]] of Object.entries(resources)) {
           ? (await query.select(FRAME_LIST_FIELDS).lean()).map(frameListItem)
           : route === "stickers"
             ? (await query.select(STICKER_LIST_FIELDS).lean()).map(stickerListItem)
-            : route === "packages" ? (await query.lean()).map(polaroidPackage) : await query.lean(),
+            : route === "packages" ? (await query.lean()).map(selfboothPackage) : await query.lean(),
       );
     },
   );

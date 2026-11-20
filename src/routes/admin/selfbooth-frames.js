@@ -11,7 +11,7 @@ import { fail } from "../validation.js";
 import { hashImage, makeFrameThumb } from "../../services/frame-image.js";
 import { withFrameCatalogLock } from "../../services/frame-order.js";
 import { frameInput } from "./resources.js";
-import { POLAROID_SIZE } from "../../print-sizes.js";
+import { SELFBOOTH_SIZE } from "../../print-sizes.js";
 
 export const selfboothFramesRouter = Router();
 
@@ -70,7 +70,7 @@ async function themeFor(name) {
   if (!name) return "";
   const stored = (await Setting.findOne({ key: "studio" }).lean())?.value?.themes || [];
   const photobooth = stored.some((theme) => theme.name === name && theme.kind === "photobooth") ||
-    await Frame.exists({ themeName: name, printSize: { $ne: POLAROID_SIZE } });
+    await Frame.exists({ themeName: name, printSize: { $ne: SELFBOOTH_SIZE } });
   return photobooth ? `${name} (Selfbooth)`.slice(0, 100) : name;
 }
 
@@ -98,7 +98,7 @@ selfboothFramesRouter.post("/", admin, async (req, res) => {
       name: frame.name?.trim() || "Khung Selfbooth",
       themeName: await themeFor(frame.themeName?.trim() || ""),
       order: Math.max(0, Math.min(999, Math.round(Number(frame.order) || 0))),
-      printSize: POLAROID_SIZE,
+      printSize: SELFBOOTH_SIZE,
       image: await frameImage(frame),
       slots: frame.slots.map((slot) => ({
         x: slot.x, y: slot.y, w: slot.w, h: slot.h, kind: "photo",

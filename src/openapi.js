@@ -1102,21 +1102,6 @@ export const openapi = {
         responses: { ...ok("Lượt chụp đã mở: { booking, accessToken, captureToken, flip }", { type: "object" }, 201), ...errors(400, 403, 409, 429) },
       },
     },
-    "/api/kiosk/polaroid": {
-      post: {
-        tags: ["Máy chụp (kiosk)"],
-        deprecated: true,
-        summary: "Khôi phục lượt Selfbooth cũ đã mở trước khi chuyển sang mã chụp",
-        description: "Chỉ phát lại requestKey của lượt source = polaroid còn checked_in và có captureSession. " +
-          "Không tạo lượt mới: trả 410, yêu cầu mua mã đã thanh toán tại quầy rồi dùng /api/kiosk/claim.",
-        requestBody: body({
-          device: str("Mã máy chụp của phòng"),
-          package: str("ID gói Selfbooth (khổ large)"),
-          requestKey: uuid,
-        }, ["device", "package", "requestKey"]),
-        responses: { ...ok("Lượt cũ: { booking, accessToken, captureToken, flip }", { type: "object" }), ...errors(400, 403, 409, 410, 429) },
-      },
-    },
     "/api/kiosk/video": {
       post: {
         tags: ["Máy chụp (kiosk)"],
@@ -1181,7 +1166,7 @@ export const openapi = {
       post: {
         tags: ["Máy chụp (kiosk)"],
         summary: "Máy chụp báo còn mở (mỗi phút), nhận tên phòng, chế độ lật ảnh và loại phòng",
-        description: "kind là loại phòng: photobooth (Chạm → Nhập mã / Tiền mặt, in DNP), polaroid = Selfbooth (nhập mã mua ở quầy → chụp → chọn ảnh, ghép khung trên điện thoại, in tờ 20 × 30). " +
+        description: "kind là loại phòng: photobooth (Chạm → Nhập mã / Tiền mặt, in DNP), selfbooth = Selfbooth (nhập mã mua ở quầy → chụp → chọn ảnh, ghép khung trên điện thoại, in tờ 20 × 30). " +
           "cashCheckoutReady = máy chủ nhận bán lượt chụp bằng tiền mặt tại máy cho phòng này.",
         requestBody: body({ device: str("Mã máy chụp của phòng") }, ["device"]),
         responses: { ...ok("{ room: { _id, name, branch, flip, kind, paymentTest, cashCheckoutReady, printers } }"), ...errors(400, 403) },
@@ -1675,7 +1660,7 @@ export const openapi = {
           "Lấy mã máy chụp (device) của phòng — dùng cho liên kết Cài kiosk",
         description:
           "Lễ tân (staff, quyền Cài máy chụp) và quản trị đã đăng nhập có thể mở/cài kiosk cho phòng đang hoạt động. Mã có hạn 1 năm; phòng đã tắt không thể cấp mã mới hoặc dùng mã cũ để nhận vé. " +
-          "Loại phòng (photobooth / polaroid) chọn lúc thêm phòng, không đổi ở đây; `paymentTest` bật / tắt chế độ thử đút tiền của phòng photobooth (không gửi = giữ nguyên).",
+          "Loại phòng (photobooth / selfbooth) chọn lúc thêm phòng, không đổi ở đây; `paymentTest` bật / tắt chế độ thử đút tiền của phòng photobooth (không gửi = giữ nguyên).",
         security: loggedIn,
         parameters: [pathParam("id", "Mã phòng")],
         requestBody: body({ paymentTest: { type: "boolean" } }, []),
@@ -1685,7 +1670,7 @@ export const openapi = {
             object({
               token: { type: "string" },
               name: { type: "string" },
-              kind: enumOf(["photobooth", "polaroid"]),
+              kind: enumOf(["photobooth", "selfbooth"]),
               paymentTest: { type: "boolean" },
             }),
           ),
@@ -1818,7 +1803,7 @@ export const openapi = {
     "/api/admin/themes": {
       get: {
         tags: ["Danh mục & cài đặt"],
-        summary: "Chủ đề (bộ khung): loại hình chụp (photobooth / polaroid), số khung, số ô ảnh, trạng thái, thứ tự",
+        summary: "Chủ đề (bộ khung): loại hình chụp (photobooth / selfbooth), số khung, số ô ảnh, trạng thái, thứ tự",
         description: adminOnly,
         security: loggedIn,
         responses: { ...ok("Danh sách", { type: "array", items: { type: "object" } }), ...errors(401, 403) },
@@ -1830,7 +1815,7 @@ export const openapi = {
         security: loggedIn,
         requestBody: body({
           name: str("Tên chủ đề"),
-          kind: { type: "string", enum: ["photobooth", "polaroid"], description: "Chủ đề của phòng Photobooth (mặc định) hay phòng Selfbooth" },
+          kind: { type: "string", enum: ["photobooth", "selfbooth"], description: "Chủ đề của phòng Photobooth (mặc định) hay phòng Selfbooth" },
         }, ["name"]),
         responses: { ...ok("Danh sách", { type: "array", items: { type: "object" } }, 201), ...errors(400, 401, 403, 409) },
       },

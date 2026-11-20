@@ -5,7 +5,7 @@ import { z } from "zod";
 import { mediaReference } from "../services/r2.js";
 import { Booking, PrintJob } from "../models/index.js";
 import { appendCapture, attachOriginal, renumberPhotoStages } from "../services/capture.js";
-import { isPolaroidSize } from "../print-sizes.js";
+import { isSelfboothSize } from "../print-sizes.js";
 import { timed } from "../services/image-save-queue.js";
 import {
   deleteMedia,
@@ -241,7 +241,7 @@ export async function submitPrintPack(req, res) {
   const b = await album(req);
   const direct = req.directPrintScope;
   const archived = req.archivePrint === true;
-  if (direct && (String(b.room) !== direct.room || isPolaroidSize(b.printSize)))
+  if (direct && (String(b.room) !== direct.room || isSelfboothSize(b.printSize)))
     fail(403, "Máy in cục bộ không thuộc phòng của đơn này.");
   const { fingerprint } = d;
   const verifyReplay = (job) => {
@@ -297,7 +297,7 @@ export async function submitPrintPack(req, res) {
       branch: b.branch,
       // Cắt đôi hay in nguyên tờ theo khung thật sự được in (gói ảnh nhỏ chưa có khung nhỏ thì
       // ghép khung lớn: không được cắt đôi), không theo khổ của gói.
-      printSize: isPolaroidSize(b.printSize) ? b.printSize : d.printSize || b.printSize || "full",
+      printSize: isSelfboothSize(b.printSize) ? b.printSize : d.printSize || b.printSize || "full",
       copies: 1,
       frameName: d.frameName,
       file: files[0],
@@ -307,9 +307,9 @@ export async function submitPrintPack(req, res) {
       requestKey: d.requestKey,
       requestFingerprint: fingerprint,
       // Phòng Selfbooth (như web Selfbooth): lệnh in lên Hàng chờ in, nhân viên ở quầy bấm In ra máy DS820.
-      spoolStatus: archived ? "sent" : direct ? "sending" : isPolaroidSize(b.printSize) ? "idle"
+      spoolStatus: archived ? "sent" : direct ? "sending" : isSelfboothSize(b.printSize) ? "idle"
         : await initialSpoolStatus(b.room),
-      ...(isPolaroidSize(b.printSize) && !direct && !archived && { spoolMessage: "Chờ quầy in (Hàng chờ in)." }),
+      ...(isSelfboothSize(b.printSize) && !direct && !archived && { spoolMessage: "Chờ quầy in (Hàng chờ in)." }),
       ...(archived && { spoolMessage: "Kiosk đã gửi trực tiếp tới hàng in RX1; file được lưu để xem và in lại." }),
       ...(direct && { spoolLeaseId: randomUUID(), spoolLeaseUntil: new Date(Date.now() + 5 * 60_000),
         spoolMessage: "Máy chụp đang gửi trực tiếp tới RX1." }),
@@ -379,7 +379,7 @@ albumsRouter.post("/:token/photos", photoBody, async (req, res) => {
 // tải ảnh lên cùng lúc). Album phòng Photobooth vẫn chỉ để xem.
 albumsRouter.delete("/:token/photos", async (req, res) => {
   const b = await album(req, { status: 1, captureEndsAt: 1, printSize: 1 });
-  if (!isPolaroidSize(b.printSize)) fail(404, "Không tìm thấy.");
+  if (!isSelfboothSize(b.printSize)) fail(404, "Không tìm thấy.");
   const ids = [...new Set(z.array(id).min(1).max(200).parse(req.body?.ids))]
     .map((photo) => new mongoose.Types.ObjectId(photo));
   if (b.status !== "completed") fail(409, "Phiên chụp chưa hoàn thành.");

@@ -15,10 +15,10 @@ const roomSchema = new mongoose.Schema(
     // Lần cuối máy chụp báo còn mở (POST /kiosk/ping): bảng Quản lý máy hiện Online / Offline.
     lastSeenAt: { type: Date, default: null },
     // Loại hình chụp của phòng (chọn khi Cài máy chụp): "photobooth" = khách chọn Nhập mã (chuyển
-    // khoản ở quầy) hoặc Tiền mặt (đút tiền) rồi chụp, in DNP; "polaroid" = phòng Selfbooth: mua gói ở
+    // khoản ở quầy) hoặc Tiền mặt (đút tiền) rồi chụp, in DNP; "selfbooth" = phòng Selfbooth: mua gói ở
     // quầy, chụp bằng dây bấm, chọn ảnh và ghép khung trên điện thoại, in tờ 20 × 30 máy DNP DS820.
-    kind: { type: String, enum: ["photobooth", "polaroid"], default: "photobooth" },
-    // Cũ (trước khi chia photobooth / polaroid): phòng nhập mã / phòng đút tiền. Không còn dùng.
+    kind: { type: String, enum: ["photobooth", "selfbooth"], default: "photobooth" },
+    // Cũ (trước khi chia photobooth / selfbooth): phòng nhập mã / phòng đút tiền. Không còn dùng.
     payment: { type: String, enum: ["counter", "cash"], default: "counter" },
     // Chế độ thử: máy chụp có nút bỏ qua bước trả tiền (chưa lắp máy nhận tiền). Không tính doanh thu.
     paymentTest: { type: Boolean, default: false },

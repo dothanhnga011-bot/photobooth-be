@@ -192,12 +192,12 @@ test("themes group frames: rename, hide from customers, order and ungroup withou
     await staff.get("/api/admin/themes").expect(403);
     let themes = (await admin.get("/api/admin/themes").expect(200)).body;
     assert.deepEqual(themes.map((t) => [t.name, t.frames, t.slots, t.kind]).sort(),
-      [["Basic", 1, 1, "photobooth"], ["Kawaii", 2, 2, "photobooth"], ["Wide trắng", 1, 1, "polaroid"]],
+      [["Basic", 1, 1, "photobooth"], ["Kawaii", 2, 2, "photobooth"], ["Wide trắng", 1, 1, "selfbooth"]],
       "a theme without a stored kind follows its frames: 20 × 30 frames make it a Selfbooth theme");
     await admin.post("/api/admin/themes").send({ name: "Sai loại", kind: "dnp" }).expect(400);
-    themes = (await admin.post("/api/admin/themes").send({ name: "Wide hồng", kind: "polaroid" }).expect(201)).body;
+    themes = (await admin.post("/api/admin/themes").send({ name: "Wide hồng", kind: "selfbooth" }).expect(201)).body;
     assert.deepEqual([themes.find((t) => t.name === "Wide hồng").kind, themes.find((t) => t.name === "Kawaii").kind],
-      ["polaroid", "photobooth"]);
+      ["selfbooth", "photobooth"]);
     await admin.delete(`/api/admin/themes/${encodeURIComponent("Wide hồng")}`).expect(200);
     await admin.delete(`/api/admin/themes/${encodeURIComponent("Wide trắng")}`).expect(200);
     await Frame.deleteOne({ name: "W1" });
@@ -219,21 +219,21 @@ test("themes group frames: rename, hide from customers, order and ungroup withou
     themes = (await admin.delete(`/api/admin/themes/${encodeURIComponent("Dễ thương")}`).expect(200)).body;
     assert.deepEqual(themes.map((t) => t.name), ["Limited", "Basic"]);
     assert.equal(await Frame.countDocuments({ themeName: "" }), 2, "frames stay as single frames");
-    // Chủ đề thuộc loại phòng đã chọn lúc thêm (tab Photobooth / Polaroid), giữ qua đổi tên / thứ tự.
-    themes = (await admin.post("/api/admin/themes").send({ name: "Wide", kind: "polaroid" }).expect(201)).body;
-    assert.deepEqual(themes.map((t) => [t.name, t.kind]), [["Limited", "photobooth"], ["Basic", "photobooth"], ["Wide", "polaroid"]]);
+    // Chủ đề thuộc loại phòng đã chọn lúc thêm (tab Photobooth / Selfbooth), giữ qua đổi tên / thứ tự.
+    themes = (await admin.post("/api/admin/themes").send({ name: "Wide", kind: "selfbooth" }).expect(201)).body;
+    assert.deepEqual(themes.map((t) => [t.name, t.kind]), [["Limited", "photobooth"], ["Basic", "photobooth"], ["Wide", "selfbooth"]]);
     themes = (await admin.put("/api/admin/themes").send({ name: "Wide", newName: "Wide 2", active: false }).expect(200)).body;
-    assert.equal(themes.find((t) => t.name === "Wide 2").kind, "polaroid");
+    assert.equal(themes.find((t) => t.name === "Wide 2").kind, "selfbooth");
     await admin.post("/api/admin/themes").send({ name: "X", kind: "selfie" }).expect(400);
-    // Chủ đề chưa có khung chuyển được sang loại khác; có khung khổ 10 × 15 thì không chuyển sang Polaroid.
-    themes = (await admin.put("/api/admin/themes").send({ name: "Limited", kind: "polaroid" }).expect(200)).body;
-    assert.equal(themes.find((t) => t.name === "Limited").kind, "polaroid");
-    const refused = await admin.put("/api/admin/themes").send({ name: "Basic", kind: "polaroid" }).expect(409);
+    // Chủ đề chưa có khung chuyển được sang loại khác; có khung khổ 10 × 15 thì không chuyển sang Selfbooth.
+    themes = (await admin.put("/api/admin/themes").send({ name: "Limited", kind: "selfbooth" }).expect(200)).body;
+    assert.equal(themes.find((t) => t.name === "Limited").kind, "selfbooth");
+    const refused = await admin.put("/api/admin/themes").send({ name: "Basic", kind: "selfbooth" }).expect(409);
     assert.match(refused.body.message, /khổ 10 × 15/);
     // Chủ đề cũ (chưa lưu loại) có toàn khung 20 × 30: thuộc Selfbooth.
     await admin.post("/api/admin/frames").send({ name: "W1", themeName: "Selfbooth cũ", printSize: "large", image: png, slots: slot, active: true }).expect(200);
     themes = (await admin.get("/api/admin/themes").expect(200)).body;
-    assert.equal(themes.find((t) => t.name === "Selfbooth cũ").kind, "polaroid");
+    assert.equal(themes.find((t) => t.name === "Selfbooth cũ").kind, "selfbooth");
   } finally {
     await Frame.deleteMany({});
     await Setting.updateOne({ key: "studio" }, { $unset: { "value.themes": 1 } });
@@ -269,15 +269,15 @@ test("the room kind is set when the room is saved; only admins switch the photob
   assert.equal(ping.room.paymentTest, true);
   assert.equal(ping.room.cashCheckoutReady, true);
   // "Cài máy chụp" không đổi loại phòng (loại phòng chọn lúc thêm phòng), kể cả khi gửi kèm.
-  const ignored = (await setup({ kind: "polaroid" }).expect(200)).body;
+  const ignored = (await setup({ kind: "selfbooth" }).expect(200)).body;
   assert.deepEqual([ignored.kind, ignored.paymentTest], ["photobooth", true]);
   assert.equal((await Room.findById(room._id).lean()).kind, "photobooth");
-  // Phòng Polaroid (quản trị lưu phòng): không thu tiền tại máy, không có chế độ thử.
-  await saveRoom("polaroid");
-  const polaroid = (await setup({}, staff).expect(200)).body;
-  assert.deepEqual([polaroid.kind, polaroid.paymentTest], ["polaroid", false]);
-  const pinged = (await request(app).post("/api/kiosk/ping").send({ device: polaroid.token }).expect(200)).body;
-  assert.deepEqual([pinged.room.kind, pinged.room.cashCheckoutReady], ["polaroid", false]);
+  // Phòng Selfbooth (quản trị lưu phòng): không thu tiền tại máy, không có chế độ thử.
+  await saveRoom("selfbooth");
+  const selfbooth = (await setup({}, staff).expect(200)).body;
+  assert.deepEqual([selfbooth.kind, selfbooth.paymentTest], ["selfbooth", false]);
+  const pinged = (await request(app).post("/api/kiosk/ping").send({ device: selfbooth.token }).expect(200)).body;
+  assert.deepEqual([pinged.room.kind, pinged.room.cashCheckoutReady], ["selfbooth", false]);
   assert.equal((await setup({ paymentTest: true }).expect(200)).body.paymentTest, false);
   await setup({ paymentTest: "yes" }).expect(400);
   await saveRoom("photobooth");
@@ -353,9 +353,9 @@ test("packages snapshot how many photos the guest picks; the kiosk uploads one t
 });
 
 test("guests can buy a session at the kiosk with cash; test mode skips payment without revenue", async () => {
-  // Phòng Polaroid: không bán lượt bằng tiền mặt tại máy (khách trả ở quầy).
+  // Phòng Selfbooth: không bán lượt bằng tiền mặt tại máy (khách trả ở quầy).
   await admin.put(`/api/admin/rooms/${room._id}`).send({
-    name: "Máy 1", description: "", branch: "Bắc Giang", kind: "polaroid", paymentTest: false, active: true,
+    name: "Máy 1", description: "", branch: "Bắc Giang", kind: "selfbooth", paymentTest: false, active: true,
   }).expect(200);
   const { token } = (await staff.post(`/api/admin/rooms/${room._id}/device`).expect(200)).body;
   const sale = (extra) => ({ device: token, package: String(pack._id), requestKey: randomUUID(), ...extra });
@@ -449,7 +449,7 @@ test("Selfbooth packages are timed: unlimited shots, the package's minutes and 2
   const adminPack = (await admin.get("/api/admin/packages").expect(200)).body.find(p => p._id === String(pack._id));
   for (const p of [publicPack, adminPack]) assert.deepEqual([p.duration, p.shots, p.prints, p.price], [22, 0, 2, 120000]);
   await admin.put(`/api/admin/rooms/${room._id}`).send({
-    name: "Máy 1", description: "", branch: "Bắc Giang", kind: "polaroid", paymentTest: false, active: true,
+    name: "Máy 1", description: "", branch: "Bắc Giang", kind: "selfbooth", paymentTest: false, active: true,
   }).expect(200);
   const { token } = (await staff.post(`/api/admin/rooms/${room._id}/device`).expect(200)).body;
   const ping = (await request(app).post("/api/kiosk/ping").send({ device: token }).expect(200)).body;
@@ -475,11 +475,8 @@ test("Selfbooth packages are timed: unlimited shots, the package's minutes and 2
   await admin.put("/api/admin/settings/extra-print-price").send({ extraSelfboothPrice: 30000 }).expect(200);
   const prices = (await request(app).get("/api/catalog").expect(200)).body.settings;
   assert.deepEqual([prices.extraPrintPrice, prices.extraSelfboothPrice], [15000, 30000]);
-  // Polaroid sells a code at the counter; the kiosk cannot open a fresh unpaid layout.
+  // Selfbooth sells a code at the counter; the kiosk only opens paid codes.
   const layout = { device: token, package: String(pack._id), requestKey: randomUUID() };
-  const beforeLegacy = await Booking.countDocuments();
-  await request(app).post("/api/kiosk/polaroid").send(layout).expect(410);
-  assert.equal(await Booking.countDocuments(), beforeLegacy);
   const sell = key => admin.post('/api/admin/tickets').send({ package: String(pack._id), room: String(room._id),
     requestKey: key, expectedTotal: 120000, paymentMethod: 'transfer', paymentReceived: true });
   const sold = (await sell(layout.requestKey).expect(201)).body;
@@ -512,17 +509,9 @@ test("Selfbooth packages are timed: unlimited shots, the package's minutes and 2
   assert.deepEqual([stored.paid, stored.paymentMethod], [true, "transfer"]);
   assert.ok(stored.paidAt);
   await staff.patch(`/api/admin/bookings/${stored._id}`).send({ collected: "cash" }).expect(409);
-  // Old sessions opened before the update can still replay their already-created request.
-  const oldKey = randomUUID();
-  const old = await Booking.create({ source: 'polaroid', status: 'checked_in', room: room._id,
-    requestKey: oldKey, captureSession: 'legacy-session', accessToken: randomUUID(), photos: [] });
-  const oldReplay = (await request(app).post('/api/kiosk/polaroid').send({ ...layout, requestKey: oldKey }).expect(200)).body;
-  assert.equal(oldReplay.booking._id, String(old._id));
-  // Phòng photobooth không mở lượt Polaroid.
   await admin.put(`/api/admin/rooms/${room._id}`).send({
     name: "Máy 1", description: "", branch: "Bắc Giang", kind: "photobooth", paymentTest: false, active: true,
   }).expect(200);
-  await request(app).post("/api/kiosk/polaroid").send({ ...layout, requestKey: randomUUID() }).expect(403);
 
   await Setting.updateOne({ key: "studio" }, { $unset: { "value.extraPrintPrice": 1, "value.extraSelfboothPrice": 1 } });
   await admin.put(`/api/admin/packages/${pack._id}`)
@@ -668,10 +657,10 @@ test("the shop edits the kiosk's on-screen texts; blank lines fall back to the k
   await admin.put("/api/admin/settings/kiosk-texts").send({ kioskTexts: {} }).expect(200);
 });
 
-test("the counter sells Polaroid packages as codes; a code opens only in its kind of room and is not used up elsewhere", async () => {
+test("the counter sells Selfbooth packages as codes; a code opens only in its kind of room and is not used up elsewhere", async () => {
   const small = await Package.create({ name: "Chụp đơn", price: 100000, duration: 7, prints: 1, printSize: "large", active: true });
   const legacy = await Package.create({ name: "Selfbooth 4 ảnh", price: 110000, duration: 10, prints: 2, selectCount: 4, printSize: "large", active: true });
-  const polaroidRoom = await Room.create({ name: "Polaroid 1", branch: "Bắc Giang", kind: "polaroid", active: true });
+  const selfboothRoom = await Room.create({ name: "Selfbooth 1", branch: "Bắc Giang", kind: "selfbooth", active: true });
   const sell = (body, as = staff) => as.post("/api/admin/tickets").send({ name: "", phone: "", room: "", branch: "Bắc Giang",
     requestKey: randomUUID(), paymentMethod: "cash", paymentReceived: true, ...body });
   const claim = (code, kioskRoom) => request(app).post("/api/kiosk/claim")
@@ -685,7 +674,7 @@ test("the counter sells Polaroid packages as codes; a code opens only in its kin
     // Gói cũ ghi "4 ảnh" vẫn bán được: theo số phút và số tấm của gói.
     const old = await Booking.findById((await sell({ package: String(legacy._id) }).expect(201)).body._id);
     assert.deepEqual([old.captureDuration, old.prints], [10, 2]);
-    // Phiếu chờ thu tiền (Tạo mã chụp ở quầy) → xác nhận đã thu → mã 6 số, cũng cho gói Polaroid.
+    // Phiếu chờ thu tiền (Tạo mã chụp ở quầy) → xác nhận đã thu → mã 6 số, cũng cho gói Selfbooth.
     const draft = (await staff.post("/api/admin/tickets/draft").send({ branch: "Bắc Giang", package: String(small._id),
       requestKey: randomUUID(), expectedTotal: small.price }).expect(201)).body;
     const activated = (await staff.patch(`/api/admin/tickets/${draft._id}/activate`)
@@ -695,21 +684,21 @@ test("the counter sells Polaroid packages as codes; a code opens only in its kin
     assert.match((await sell({ package: String(small._id), room: String(room._id) }).expect(400)).body.message,
       /Gói Selfbooth chỉ dùng ở phòng Selfbooth/);
     assert.match((await sell({ package: String(small._id), branch: "Hà Nội" }, admin).expect(400)).body.message, /chưa có phòng Selfbooth/);
-    assert.match((await sell({ package: String(pack._id), room: String(polaroidRoom._id) }).expect(400)).body.message,
+    assert.match((await sell({ package: String(pack._id), room: String(selfboothRoom._id) }).expect(400)).body.message,
       /Phòng Selfbooth chỉ nhận mã của gói Selfbooth/);
 
     // Nhầm phòng: báo rõ, mã vẫn còn; đúng phòng Selfbooth thì mở lượt chụp.
     assert.match((await claim(code.code, room).expect(400)).body.message, /dành cho phòng Selfbooth/);
     assert.equal((await Booking.findById(code._id)).status, "confirmed", "the code is not used up in the wrong room");
-    const opened = (await claim(code.code, polaroidRoom).expect(200)).body;
+    const opened = (await claim(code.code, selfboothRoom).expect(200)).body;
     assert.equal(opened.booking.printSize, "large");
-    assert.equal(String(opened.booking.room), String(polaroidRoom._id));
+    assert.equal(String(opened.booking.room), String(selfboothRoom._id));
     const booth = (await sell({ package: String(pack._id) }).expect(201)).body;
-    assert.match((await claim(booth.code, polaroidRoom).expect(400)).body.message, /dành cho phòng Photobooth/);
+    assert.match((await claim(booth.code, selfboothRoom).expect(400)).body.message, /dành cho phòng Photobooth/);
     assert.equal((await Booking.findById(booth._id)).status, "confirmed");
   } finally {
     await Package.deleteMany({ _id: { $in: [small._id, legacy._id] } });
-    await Room.deleteOne({ _id: polaroidRoom._id });
+    await Room.deleteOne({ _id: selfboothRoom._id });
     await Booking.deleteMany({});
   }
 });
@@ -773,26 +762,26 @@ test("the orders list for a date range leaves out what the booth updates every f
   }
 });
 
-test("the Đơn hàng badge counts today's unconfirmed counter tickets and unpaid Polaroid turns, per branch", async () => {
+test("the Đơn hàng badge counts today's unconfirmed counter tickets and unpaid Selfbooth turns, per branch", async () => {
   const count = async (agent) => (await agent.get("/api/admin/bookings/awaiting-payment").expect(200)).body.count;
   const [adminBefore, staffBefore] = [await count(admin), await count(staff)];
   const day = today();
   const yesterday = new Date(Date.now() - 86400000).toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
   const made = await Booking.create([
-    // Đếm: phiếu quầy hôm nay chưa xác nhận thu (Bắc Giang), lượt Polaroid cũ chưa thu (Hà Nội).
+    // Đếm: phiếu quầy hôm nay chưa xác nhận thu (Bắc Giang), lượt Selfbooth cũ chưa thu (Hà Nội).
     { source: "counter", status: "pending", paid: false, branch: "Bắc Giang", date: day, total: 100000 },
-    { source: "polaroid", status: "completed", paid: false, branch: "Hà Nội", date: day, total: 120000 },
-    // Không đếm: phiếu bỏ dở hôm qua, phiếu đã thu, lượt Polaroid đã thu, đơn đã hủy.
+    { source: "selfbooth", status: "completed", paid: false, branch: "Hà Nội", date: day, total: 120000 },
+    // Không đếm: phiếu bỏ dở hôm qua, phiếu đã thu, lượt Selfbooth đã thu, đơn đã hủy.
     { source: "counter", status: "pending", paid: false, branch: "Bắc Giang", date: yesterday, total: 100000 },
     { source: "counter", status: "confirmed", paid: true, branch: "Bắc Giang", date: day, total: 100000 },
-    { source: "polaroid", status: "completed", paid: true, branch: "Bắc Giang", date: day, total: 120000 },
+    { source: "selfbooth", status: "completed", paid: true, branch: "Bắc Giang", date: day, total: 120000 },
     { source: "counter", status: "cancelled", paid: false, branch: "Bắc Giang", date: day, total: 100000 },
   ]);
   try {
     assert.equal(await count(admin), adminBefore + 2);
     // Lễ tân Bắc Giang chỉ thấy phiếu của chi nhánh mình.
     assert.equal(await count(staff), staffBefore + 1);
-    // Bấm "Đã thu tiền" cho lượt Polaroid: số giảm ngay.
+    // Bấm "Đã thu tiền" cho lượt Selfbooth: số giảm ngay.
     await admin.patch(`/api/admin/bookings/${made[1]._id}`).send({ collected: "cash" }).expect(200);
     assert.equal(await count(admin), adminBefore + 1);
   } finally {
@@ -880,7 +869,7 @@ test("Selfbooth room: timed 20 x 30 package, its code, the phone's 2400 x 3600 s
   const sharp = (await import("sharp")).default;
   const previous = config.printAgentToken;
   config.printAgentToken = "";
-  const selfRoom = await Room.create({ name: "Selfbooth 1", branch: "Bắc Giang", kind: "polaroid", active: true });
+  const selfRoom = await Room.create({ name: "Selfbooth 1", branch: "Bắc Giang", kind: "selfbooth", active: true });
   let packId;
   try {
     // Gói như Selfbooth: giá, số phút, số tờ 20 x 30; chụp không giới hạn.
