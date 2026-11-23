@@ -241,6 +241,8 @@ export async function submitPrintPack(req, res) {
   const b = await album(req);
   const direct = req.directPrintScope;
   const archived = req.archivePrint === true;
+  // RX1 on the booth did not confirm the sheet: saved so staff print it again from Đơn hàng.
+  const unprinted = archived && req.archiveUnprinted === true;
   if (direct && (String(b.room) !== direct.room || isSelfboothSize(b.printSize)))
     fail(403, "Máy in cục bộ không thuộc phòng của đơn này.");
   const { fingerprint } = d;
@@ -307,10 +309,12 @@ export async function submitPrintPack(req, res) {
       requestKey: d.requestKey,
       requestFingerprint: fingerprint,
       // Phòng Selfbooth (như web Selfbooth): lệnh in lên Hàng chờ in, nhân viên ở quầy bấm In ra máy DS820.
-      spoolStatus: archived ? "sent" : direct ? "sending" : isSelfboothSize(b.printSize) ? "idle"
+      spoolStatus: unprinted ? "failed" : archived ? "sent" : direct ? "sending" : isSelfboothSize(b.printSize) ? "idle"
         : await initialSpoolStatus(b.room),
       ...(isSelfboothSize(b.printSize) && !direct && !archived && { spoolMessage: "Chờ quầy in (Hàng chờ in)." }),
-      ...(archived && { spoolMessage: "Kiosk đã gửi trực tiếp tới hàng in RX1; file được lưu để xem và in lại." }),
+      ...(archived && { spoolMessage: unprinted
+        ? "Máy chụp chưa in được tờ này (RX1 chưa kết nối hoặc không xác nhận). Kiểm tra khay giấy rồi bấm In lại qua RX1."
+        : "Kiosk đã gửi trực tiếp tới hàng in RX1; file được lưu để xem và in lại." }),
       ...(direct && { spoolLeaseId: randomUUID(), spoolLeaseUntil: new Date(Date.now() + 5 * 60_000),
         spoolMessage: "Máy chụp đang gửi trực tiếp tới RX1." }),
     });
@@ -340,9 +344,11 @@ export async function submitPrintPack(req, res) {
   }
 }
 albumsRouter.post("/:token/print-pack", printLimit, printBody, submitPrintPack);
-// Archive only AFTER the local printer acknowledges the bytes. This route can never dispatch paper.
+// The booth archives its sheet after trying the local printer: ?result=failed when RX1 did not
+// acknowledge it (saved so staff can print it again). This route can never dispatch paper.
 albumsRouter.post("/:token/print-archive", printLimit, printBody, (req, res) => {
   req.archivePrint = true;
+  req.archiveUnprinted = req.query.result === "failed";
   return submitPrintPack(req, res);
 });
 

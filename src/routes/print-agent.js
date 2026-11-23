@@ -53,7 +53,8 @@ printAgentRouter.post("/output-settings/sync", async (req, res) => {
   }).strict().parse(req.body);
   await noteRx1Output(req.printScope, applied);
   if (sharpnessTest) await noteSharpnessTest(req.printScope.room, sharpnessTest);
-  res.json({ rx1Output: await getRx1Output(), sharpnessTest: await pendingSharpnessTest(req.printScope.room) });
+  res.json({ rx1Output: await getRx1Output(), sharpnessTest: await pendingSharpnessTest(req.printScope.room, Date.now(),
+    { cut: applied.stripShift !== undefined }) });
 });
 // Authenticated room agent reserves/stores a local print without ever putting it in the claim queue.
 // Only the first response includes a lease. A retry cannot print an uncertain physical result twice.

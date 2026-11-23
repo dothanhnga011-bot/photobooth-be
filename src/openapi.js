@@ -60,6 +60,8 @@ const rx1Output = object({
   maxResolution: bool("Dùng DPI cao nhất driver hỗ trợ"),
   sharpen: { type: "integer", minimum: 0, maximum: 4, description: "Độ nét bản in: 0 = không làm nét … 4 = mạnh; mặc định 2. " +
     "Bộ in co tờ in đúng lưới điểm của máy in rồi làm nét nhẹ trên độ sáng. Thiếu = mặc định (bộ in cũ không gửi)." },
+  stripShift: { type: "number", minimum: -5, maximum: 5, multipleOf: 0.1, description: "Dời nội dung tờ cắt đôi (mm, dương = sang dải phải) " +
+    "cho đường cắt 2 inch rơi đúng giữa hai dải; đo bằng In thử đường cắt. Mặc định 0. Thiếu = bộ in cũ (chưa hỗ trợ)." },
 }, ["gamma", "maxResolution"]);
 const enumOf = (values, description) => ({
   type: "string",
@@ -1003,7 +1005,7 @@ export const openapi = {
     "/api/admin/bookings/{id}/print-file": {
       post: {
         tags: ["Quầy & vé"], summary: "Lưu tờ ghép thủ công sau khi RX1 nhận file",
-        description: "Cần print:operate và đúng chi nhánh. Cùng định dạng nhị phân/header với print-pack, thêm X-Print-Copies (1–20). Tối đa 20 tờ × bản, 64 MB. Không gửi máy in, không trừ lượt hoặc cộng tiền; gửi lại cùng requestKey trả bản ghi cũ.",
+        description: "Cần print:operate và đúng chi nhánh. Cùng định dạng nhị phân/header với print-pack, thêm X-Print-Copies (1–20) và X-Print-Delivery (local mặc định: quầy đã in qua RX1; none: chỉ lưu file, spoolStatus=idle). Tối đa 20 tờ × bản, 64 MB. Không gửi máy in, không trừ lượt hoặc cộng tiền; gửi lại cùng requestKey trả bản ghi cũ.",
         security: loggedIn, parameters: [pathParam("id", "Mã đơn (_id)")],
         requestBody: { required: true, content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } } },
         responses: { ...ok("File in hỗ trợ đã lưu"), ...errors(400, 401, 403, 404, 409) },
@@ -1043,12 +1045,12 @@ export const openapi = {
         tags: ["Máy in tại tiệm"],
         summary: "Bộ in RX1 báo mức đang dùng và nhận cấu hình màu từ web",
         description: "Cần Bearer mã máy in riêng của phòng. Chỉ đồng bộ cấu hình, không nhận hoặc phát lệnh in khách. rx1Output: null khi quản trị chưa lưu cấu hình chung. " +
-          "sharpnessTest (trả về): yêu cầu in thử độ nét đang chờ của phòng { id } hoặc null; bộ in in một tờ thử rồi gửi lại sharpnessTest { id, sent, message } ở lần đồng bộ sau.",
+          "sharpnessTest (trả về): yêu cầu in thử đang chờ của phòng { id, kind: sharpness | cut } hoặc null (kind cut chỉ giao cho bộ in đã báo stripShift); bộ in in một tờ thử rồi gửi lại sharpnessTest { id, sent, message } ở lần đồng bộ sau.",
         requestBody: body({
           applied: rx1Output,
           sharpnessTest: object({ id: str("Mã yêu cầu in thử"), sent: bool("Đã gửi tới máy in"), message: str("Kết quả") }, ["id", "sent"]),
         }, ["applied"]),
-        responses: { ...ok("{ rx1Output: { gamma, maxResolution, sharpen } | null, sharpnessTest: { id } | null }"), ...errors(400, 403) },
+        responses: { ...ok("{ rx1Output: { gamma, maxResolution, sharpen, stripShift } | null, sharpnessTest: { id, kind } | null }"), ...errors(400, 403) },
       },
     },
     "/api/print-agent/claim": {
@@ -1450,8 +1452,8 @@ export const openapi = {
     "/api/albums/{token}/print-archive": {
       post: {
         tags: ["Album khách"], summary: "Lưu file kiosk đã in trực tiếp, không phát lệnh in",
-        description: "Cùng body/header với print-pack. Chỉ dùng sau khi RX1 cục bộ xác nhận nhận file; lưu bytes gốc, tính số tờ vào vé một lần và đặt spoolStatus=sent. Luôn bỏ qua bộ gửi in và hàng chờ; có thể thử tải lên lại bằng cùng requestKey sau mất mạng.",
-        parameters: [tokenParam],
+        description: "Cùng body/header với print-pack. Gửi sau khi máy chụp thử in trên RX1 cục bộ; lưu bytes gốc, tính số tờ vào vé một lần và đặt spoolStatus=sent. ?result=failed: RX1 không xác nhận tờ này — vẫn lưu file (spoolStatus=failed) để nhân viên in lại ở Đơn hàng. Luôn bỏ qua bộ gửi in và hàng chờ; có thể thử tải lên lại bằng cùng requestKey sau mất mạng.",
+        parameters: [tokenParam, { name: "result", in: "query", required: false, schema: { type: "string", enum: ["failed"] } }],
         requestBody: { required: true, content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } } },
         responses: { ...ok("Đã lưu file in trực tiếp"), ...errors(400, 404, 409, 429) },
       },
@@ -1696,7 +1698,7 @@ export const openapi = {
     "/api/admin/settings/rx1-output": {
       get: {
         tags: ["Thiết lập"], summary: "Đọc cấu hình màu in RX1", description: adminOnly,
-        responses: { ...ok("{ configured, settings: { gamma, maxResolution, sharpen } }"), ...errors(401, 403) },
+        responses: { ...ok("{ configured, settings: { gamma, maxResolution, sharpen, stripShift } }"), ...errors(401, 403) },
       },
       put: {
         tags: ["Thiết lập"], summary: "Lưu cấu hình màu in RX1 cho mọi máy DNP", description: adminOnly,
@@ -1710,7 +1712,17 @@ export const openapi = {
           " Bộ in của phòng nhận yêu cầu ở lần đồng bộ kế tiếp (vài giây) và in một tờ chia 5 dải độ nét 0–4 từ tờ in gần nhất " +
           "(chưa có thì ảnh mẫu). Yêu cầu quá 15 phút chưa được nhận thì bỏ. Kết quả xem ở GET /api/admin/print-jobs/printers (sharpnessTest).",
         parameters: [{ name: "room", in: "path", required: true, schema: { type: "string" } }],
-        responses: { ...ok("{ id, status: queued, at, message }"), ...errors(401, 403, 404, 409) },
+        responses: { ...ok("{ id, kind: sharpness, status: queued, at, message }"), ...errors(401, 403, 404, 409) },
+      },
+    },
+    "/api/admin/settings/rx1-output/cut-test/{room}": {
+      post: {
+        tags: ["Thiết lập"], summary: "In thử đường cắt dải ở máy DNP của một phòng", description: adminOnly +
+          " Bộ in của phòng in một tờ cắt đôi có thước vạch 0,5 mm quanh giữa tờ (in đúng tỉ lệ, không dời). Số ở mép cắt là độ lệch " +
+          "của dao cắt 2 inch: nhập vào stripShift của PUT /api/admin/settings/rx1-output. Chỉ bộ in đã báo stripShift mới nhận yêu cầu; " +
+          "quá 15 phút chưa được nhận thì bỏ. Kết quả xem ở GET /api/admin/print-jobs/printers (sharpnessTest, kind: cut).",
+        parameters: [{ name: "room", in: "path", required: true, schema: { type: "string" } }],
+        responses: { ...ok("{ id, kind: cut, status: queued, at, message }"), ...errors(401, 403, 404, 409) },
       },
     },
     "/api/admin/settings/select-time": {

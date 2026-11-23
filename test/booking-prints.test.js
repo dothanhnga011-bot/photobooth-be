@@ -58,6 +58,23 @@ test("kiosk archives exact locally printed bytes once, charges quota once, and n
   assert.equal(claim.body.job, null);
 });
 
+test("a sheet RX1 did not print is still saved, marked failed, for staff to print again — never queued", async () => {
+  const b = await makeBooking();
+  const body = { images: [`data:image/png;base64,${png.toString("base64")}`], frameName: "Pink", printSize: "full", requestKey: randomUUID() };
+  const first = await request(app).post(`/api/albums/${b.accessToken}/print-archive?result=failed`).send(body).expect(201);
+  const saved = await PrintJob.findById(first.body._id);
+  assert.equal(saved.spoolStatus, "failed");
+  assert.match(saved.spoolMessage, /chưa in được/);
+  assert.deepEqual(await readMedia(saved.file), png);
+  // The guest's paid sheets are set aside for this file, as when RX1 prints it.
+  assert.equal((await Booking.findById(b._id)).printSheets, 1);
+  const detail = await asStaff("get", `/api/admin/bookings/${b._id}/prints`).expect(200);
+  assert.equal(detail.body.jobs[0].spoolStatus, "failed");
+  const token = jwt.sign({ type: "print-agent", room: String(room._id), branch: "A" }, config.secret);
+  const claim = await request(app).post("/api/print-agent/claim").set("Authorization", `Bearer ${token}`).send({}).expect(200);
+  assert.equal(claim.body.job, null);
+});
+
 test("fresh print detail exposes all sheets and actual paper, without returning photo arrays", async () => {
   const b = await makeBooking({ printSize: "full" });
   const source = await sourceFor(b);
@@ -99,6 +116,23 @@ test("manual recovery archives PNG bytes without quota charge and can be retried
   assert.equal(saved.copies, 2);
   assert.equal(saved.spoolStatus, "sent");
   assert.equal((await Booking.findById(b._id)).printSheets, 5);
+});
+
+test("a counter without RX1 can save a composed sheet only: kept for In lại, never queued to a printer", async () => {
+  const b = await makeBooking({ printSheets: 1 });
+  const saved = await asStaff("post", `/api/admin/bookings/${b._id}/print-file`)
+    .set("Content-Type", "application/octet-stream").set("X-Print-Key", randomUUID())
+    .set("X-Print-Sheets", String(png.length)).set("X-Print-Frame", "Counter").set("X-Print-Delivery", "none").send(png).expect(201);
+  const job = await PrintJob.findById(saved.body._id);
+  assert.equal(job.spoolStatus, "idle");
+  assert.match(job.spoolMessage, /chưa gửi máy in/);
+  assert.equal((await Booking.findById(b._id)).printSheets, 1);
+  const token = jwt.sign({ type: "print-agent", room: String(room._id), branch: "A" }, config.secret);
+  const claim = await request(app).post("/api/print-agent/claim").set("Authorization", `Bearer ${token}`).send({}).expect(200);
+  assert.equal(claim.body.job, null);
+  await asStaff("post", `/api/admin/bookings/${b._id}/print-file`)
+    .set("Content-Type", "application/octet-stream").set("X-Print-Key", randomUUID())
+    .set("X-Print-Sheets", String(png.length)).set("X-Print-Delivery", "queue").send(png).expect(400);
 });
 
 test("printing requires permission, the assigned branch, an active completed capture and valid pixels", async () => {

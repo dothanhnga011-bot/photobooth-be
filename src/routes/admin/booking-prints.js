@@ -89,14 +89,17 @@ bookingPrintsRouter.post("/bookings/:id/reprint", allow("print:operate"), async 
 });
 
 // A manually composed recovery sheet is archived after local output, without charging the album.
+// X-Print-Delivery: none — the counter only saves the sheet (no RX1 on this computer); it is printed
+// later with "In lại qua RX1". Never dispatched to a printer by the server either way.
 bookingPrintsRouter.post("/bookings/:id/print-file", allow("print:operate"), printBody, async (req, res) => {
   const booking = await bookingFor(req, true);
   if (isSelfboothSize(booking.printSize)) fail(400, "Tờ 20 × 30 của phòng Selfbooth in ở Hàng chờ in (máy DNP DS820 ở quầy).");
   const d = readPrintPack(req);
   const copies = z.coerce.number().int().min(1).max(20).parse(req.get("X-Print-Copies") || 1);
+  const saveOnly = z.enum(["local", "none"]).default("local").parse(req.get("X-Print-Delivery") || undefined) === "none";
   if (d.sheets.length * copies > 20) fail(400, "Mỗi lượt hỗ trợ tối đa 20 tờ in.");
   const printSize = d.printSize || booking.printSize || "full";
-  const fingerprint = JSON.stringify(["manual", d.fingerprint, printSize, copies]);
+  const fingerprint = JSON.stringify(["manual", d.fingerprint, printSize, copies, ...(saveOnly ? ["save"] : [])]);
   const previous = await replay(booking, d.requestKey, fingerprint);
   if (previous) return respond(res, previous, booking);
   const files = [];
@@ -117,7 +120,9 @@ bookingPrintsRouter.post("/bookings/:id/print-file", allow("print:operate"), pri
       copies, frameName: d.frameName, file: sheets[0].file, sheets,
       width: sheets[0].width, height: sheets[0].height,
       requestKey: d.requestKey, requestFingerprint: fingerprint, operatorPrint: true,
-      spoolStatus: "sent", spoolMessage: "Quầy đã ghép ảnh và gửi trực tiếp tới hàng in RX1.",
+      ...(saveOnly
+        ? { spoolStatus: "idle", spoolMessage: "Quầy đã ghép và lưu file in, chưa gửi máy in." }
+        : { spoolStatus: "sent", spoolMessage: "Quầy đã ghép ảnh và gửi trực tiếp tới hàng in RX1." }),
     });
   } catch (error) {
     await deleteMedia(files).catch(() => {});

@@ -20,13 +20,16 @@ settingsRouter.put("/rx1-output", admin, async (req, res) => {
   await Setting.findOneAndUpdate({ key: "studio" }, { $set: { "value.rx1Output": settings } }, { upsert: true });
   res.json({ configured: true, settings });
 });
-// In thử độ nét ở máy DNP của một phòng photobooth: một tờ chia 5 dải độ nét 0–4 (xem rx1-output.js).
-settingsRouter.post("/rx1-output/sharpness-test/:room", admin, async (req, res) => {
+// In thử ở máy DNP của một phòng photobooth (xem rx1-output.js): độ nét — một tờ chia 5 dải độ nét 0–4;
+// đường cắt — thước vạch quanh giữa tờ, in cắt đôi, để đo độ lệch của dao cắt 2 inch.
+async function requestTest(req, res, kind) {
   const room = await Room.findById(id.parse(req.params.room)).select("branch kind active").lean();
   if (!room || room.active === false) fail(404, "Không tìm thấy phòng.");
-  if (room.kind === "selfbooth") fail(409, "Phòng Selfbooth in tờ 20 × 30 ở quầy; in thử độ nét chỉ dành cho máy RX1 của phòng Photobooth.");
-  res.status(201).json(await requestSharpnessTest({ room: room._id, branch: room.branch || "" }));
-});
+  if (room.kind === "selfbooth") fail(409, "Phòng Selfbooth in tờ 20 × 30 ở quầy; in thử chỉ dành cho máy RX1 của phòng Photobooth.");
+  res.status(201).json(await requestSharpnessTest({ room: room._id, branch: room.branch || "", kind }));
+}
+settingsRouter.post("/rx1-output/sharpness-test/:room", admin, (req, res) => requestTest(req, res, "sharpness"));
+settingsRouter.post("/rx1-output/cut-test/:room", admin, (req, res) => requestTest(req, res, "cut"));
 
 // Only the extra-sheet prices (admins only): a 10 × 15 sheet and a 20 × 30 Selfbooth sheet. The rest of
 // the studio settings are left exactly as they are.
