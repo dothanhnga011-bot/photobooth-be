@@ -53,24 +53,29 @@ bookingPrintsRouter.get("/bookings/:id/prints", allow("print:operate"), async (r
 // Local delivery records a successful local send; it NEVER creates an automatic print queue job.
 bookingPrintsRouter.post("/bookings/:id/reprint", allow("print:operate"), async (req, res) => {
   const d = z.object({ jobId: id, copies: z.number().int().min(1).max(20),
+    sheet: z.number().int().min(0).optional(),
     requestKey: z.uuid().optional(), delivery: z.enum(["queue", "local"]).default("queue"),
   }).refine((v) => v.delivery !== "local" || v.requestKey, "Thiếu mã chống trùng của lượt in.").parse(req.body);
   const booking = await bookingFor(req, true);
-  const fingerprint = JSON.stringify(["reprint", d.jobId, d.copies, d.delivery]);
+  const fingerprint = JSON.stringify(["reprint", d.jobId, d.copies, d.delivery, ...(d.sheet === undefined ? [] : [d.sheet])]);
   const previous = await replay(booking, d.requestKey, fingerprint);
   if (previous) return respond(res, previous, booking);
   const source = await PrintJob.findOne({ _id: d.jobId, booking: booking._id, ...livePrintFilter() });
   if (!source) fail(404, "File in không còn hoặc đã hết hạn lưu trữ.");
   if (isSelfboothSize(source.printSize))
     fail(400, "Tờ 20 × 30 của phòng Selfbooth in ở Hàng chờ in (máy DNP DS820 ở quầy), không tạo lệnh in lại.");
-  if (d.delivery === "local" && (source.sheets?.length || 1) * d.copies > 20)
+  const sheet = d.sheet === undefined ? null : source.sheets?.[d.sheet];
+  if (d.sheet !== undefined && !sheet?.file) fail(400, "Tờ in đã chọn không tồn tại.");
+  const sheetCount = sheet ? 1 : (source.sheets?.length || 1);
+  if (d.delivery === "local" && sheetCount * d.copies > 20)
     fail(400, "Mỗi lượt hỗ trợ tối đa 20 tờ in.");
   let job;
   try {
     job = await PrintJob.create({ booking: booking._id, code: booking.code, name: booking.name,
       roomName: booking.roomName, room: booking.room, branch: booking.branch,
       copies: d.copies, frameName: source.frameName, printSize: source.printSize || "full",
-      file: source.file, sheets: source.sheets, width: source.width, height: source.height,
+      file: sheet?.file || source.file, sheets: sheet ? [sheet] : source.sheets,
+      width: sheet?.width || source.width, height: sheet?.height || source.height,
       operatorPrint: true, reprintOf: source._id, fileExpiresAt: printExpiry(source),
       requestKey: d.requestKey, requestFingerprint: fingerprint,
       spoolStatus: d.delivery === "local" ? "sent" : await initialSpoolStatus(booking.room),

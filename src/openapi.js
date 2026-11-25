@@ -991,6 +991,7 @@ export const openapi = {
           {
             jobId: str("Mã lệnh in nguồn"),
             copies: int("Số bản (1–20)", { minimum: 1, maximum: 20 }),
+            sheet: int("Vị trí tờ cần in, bắt đầu từ 0. Bỏ qua để in cả bộ.", { minimum: 0 }),
             requestKey: uuid,
             delivery: enumOf(["queue", "local"]),
           },
@@ -1452,8 +1453,10 @@ export const openapi = {
     "/api/albums/{token}/print-archive": {
       post: {
         tags: ["Album khách"], summary: "Lưu file kiosk đã in trực tiếp, không phát lệnh in",
-        description: "Cùng body/header với print-pack. Gửi sau khi máy chụp thử in trên RX1 cục bộ; lưu bytes gốc, tính số tờ vào vé một lần và đặt spoolStatus=sent. ?result=failed: RX1 không xác nhận tờ này — vẫn lưu file (spoolStatus=failed) để nhân viên in lại ở Đơn hàng. Luôn bỏ qua bộ gửi in và hàng chờ; có thể thử tải lên lại bằng cùng requestKey sau mất mạng.",
-        parameters: [tokenParam, { name: "result", in: "query", required: false, schema: { type: "string", enum: ["failed"] } }],
+        description: "Cùng body/header với print-pack. Lưu file PTB để quầy in lại. Kết quả mặc định là sent. failed là RX1 chưa xác nhận. saved chỉ lưu một tờ mẫu, giữ nguyên lượt in. Với nhiều bản giống nhau, gửi một tờ kèm copies. Route này không phát lệnh tới máy in.",
+        parameters: [tokenParam,
+          { name: "result", in: "query", required: false, schema: { type: "string", enum: ["failed", "saved"] } },
+          { name: "copies", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 60 } }],
         requestBody: { required: true, content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } } },
         responses: { ...ok("Đã lưu file in trực tiếp"), ...errors(400, 404, 409, 429) },
       },

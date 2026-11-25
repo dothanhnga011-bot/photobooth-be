@@ -87,6 +87,54 @@ test("fresh print detail exposes all sheets and actual paper, without returning 
   assert.match(response.body.jobs[0].image, /\/prints\//);
 });
 
+test("a PTB archive does not need pending album photos and stores one master for multiple printed copies", async () => {
+  const b = await makeBooking({ photos: [] });
+  const body = { images: [`data:image/png;base64,${png.toString("base64")}`], frameName: "Pink", requestKey: randomUUID() };
+  const path = `/api/albums/${b.accessToken}/print-archive`;
+  const saved = await request(app).post(`${path}?copies=3`).send(body).expect(201);
+  assert.equal(saved.body.sheetCount, 1);
+  assert.equal(saved.body.copies, 3);
+  assert.equal(saved.body.printSheets, 3);
+  await request(app).post(`${path}?copies=3`).send(body).expect(200);
+  await request(app).post(`${path}?copies=2`).send(body).expect(409);
+  const oneMore = await asStaff("post", `/api/admin/bookings/${b._id}/reprint`).send({
+    jobId: saved.body._id, copies: 1, delivery: "local", requestKey: randomUUID(),
+  }).expect(201);
+  assert.equal(oneMore.body.sheetCount, 1);
+  assert.equal(oneMore.body.copies, 1);
+  await request(app).delete(`/api/admin/print-jobs/${saved.body._id}`).set("Cookie", admin).expect(200);
+  assert.equal((await Booking.findById(b._id)).printSheets, 0);
+});
+
+test("a digital-only PTB session keeps one reprintable sheet without reserving quota", async () => {
+  const b = await makeBooking({ prints: 0, photos: [] });
+  const body = { images: [`data:image/png;base64,${png.toString("base64")}`], frameName: "Pink", requestKey: randomUUID() };
+  const path = `/api/albums/${b.accessToken}/print-archive?result=saved`;
+  const first = await request(app).post(path).send(body).expect(201);
+  const replay = await request(app).post(path).send({ ...body, requestKey: randomUUID() }).expect(200);
+  assert.equal(replay.body._id, first.body._id);
+  assert.equal(first.body.spoolStatus, "idle");
+  assert.equal(first.body.printSheets, 0);
+  assert.deepEqual(await readMedia((await PrintJob.findById(first.body._id)).file), png);
+});
+
+test("a counter reprint can use just the selected page from a legacy set", async () => {
+  const b = await makeBooking();
+  const source = await sourceFor(b);
+  const second = `print-${randomUUID()}.png`;
+  await saveMedia(second, png, "image/png");
+  source.sheets.push({ file: second, width: 1200, height: 1800 });
+  await source.save();
+  const path = `/api/admin/bookings/${b._id}/reprint`;
+  const input = { jobId: String(source._id), copies: 1, delivery: "local", requestKey: randomUUID(), sheet: 1 };
+  const result = await asStaff("post", path).send(input).expect(201);
+  const job = await PrintJob.findById(result.body._id);
+  assert.equal(job.file, second);
+  assert.equal(job.sheets.length, 1);
+  await asStaff("post", path).send({ ...input, sheet: 0 }).expect(409);
+  await asStaff("post", path).send({ ...input, requestKey: randomUUID(), sheet: 2 }).expect(400);
+});
+
 test("simultaneous retry creates one local reprint, preserves bytes, expiry and guest allowance", async () => {
   const b = await makeBooking({ printSheets: 2 });
   const source = await sourceFor(b);

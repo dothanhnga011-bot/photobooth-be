@@ -126,7 +126,7 @@ printsRouter.delete("/:id", admin, async (req, res) => {
   if (!removed) return res.json({ ok: true });
   // Lệnh chưa in bị hủy: trả lại số tờ để khách sửa và gửi lại.
   if (removed.status === "pending" && removed.booking && !removed.operatorPrint)
-    await releaseSheets(removed.booking, removed.sheets?.length || 1);
+    await releaseSheets(removed.booking, (removed.sheets?.length || 1) * (removed.copies || 1));
   printEvents.emit("print-updated", publicJob(removed));
   res.json({ ok: true });
 });

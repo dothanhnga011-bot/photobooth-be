@@ -243,9 +243,16 @@ export async function submitPrintPack(req, res) {
   const archived = req.archivePrint === true;
   // RX1 on the booth did not confirm the sheet: saved so staff print it again from Đơn hàng.
   const unprinted = archived && req.archiveUnprinted === true;
+  const saveOnly = archived && req.archiveSaved === true;
+  if (archived && isSelfboothSize(b.printSize))
+    fail(400, "Chỉ đơn PTB hỗ trợ lưu tờ in RX1.");
   if (direct && (String(b.room) !== direct.room || isSelfboothSize(b.printSize)))
     fail(403, "Máy in cục bộ không thuộc phòng của đơn này.");
-  const { fingerprint } = d;
+  const archiveCopies = archived ? z.coerce.number().int().min(1).max(60).parse(req.query.copies ?? 1) : 1;
+  if (archiveCopies > 1 && (saveOnly || d.sheets.length !== 1))
+    fail(400, "Số bản sao chỉ áp dụng cho một tờ in.");
+  const fingerprint = archiveCopies > 1 ? `${d.fingerprint}:${archiveCopies}` : d.fingerprint;
+  const requestKey = saveOnly ? `saved:${b._id}` : d.requestKey;
   const verifyReplay = (job) => {
     // Keep legacy jobs replayable; newly created jobs always have a fingerprint.
     if (job.requestFingerprint && job.requestFingerprint !== fingerprint)
@@ -256,7 +263,7 @@ export async function submitPrintPack(req, res) {
     return job;
   };
   const existing = await PrintJob.findOne({
-    requestKey: d.requestKey,
+    requestKey,
     booking: b._id,
   }).select("+requestFingerprint");
   const quota = (booking) => ({
@@ -265,14 +272,22 @@ export async function submitPrintPack(req, res) {
   });
   if (existing)
     return res.json({ ...publicJob(verifyReplay(existing)), ...quota(b), ...(direct && { direct: { fresh: false } }) });
-  requireMedia(b);
-  const n = d.sheets.length;
-  const reserved = await reserveSheets(b, n, d.frameName);
+  if (archived) {
+    if (b.status !== "completed" || !(albumMediaExpiry(b) > new Date()))
+      fail(409, "Phiên PTB chưa kết thúc hoặc file đã hết hạn lưu trữ.");
+  } else requireMedia(b);
+  const n = d.sheets.length * archiveCopies;
+  if (saveOnly && n !== 1) fail(400, "Chỉ lưu một tờ mẫu cho đơn PTB.");
+  const reserved = saveOnly ? b : await reserveSheets(b, n, d.frameName);
   if (!reserved) fail(409, quotaMessage(printQuota(b), b.printSheets || 0));
+  // Kiosk prints identical copies. Archive one master so the counter can
+  // print exactly one extra sheet even if the guest initially printed several.
+  const repeated = archived && n > 1 && d.sheets.every(({ buffer }) => buffer.equals(d.sheets[0].buffer));
+  const sourceSheets = repeated ? d.sheets.slice(0, 1) : d.sheets;
   const files = [], saves = [];
   try {
     const sheets = [];
-    for (const { buffer, type } of d.sheets) {
+    for (const { buffer, type } of sourceSheets) {
       let metadata;
       try {
         metadata = await validatePrintImage(buffer, `image/${type}`, b.printSize);
@@ -300,19 +315,20 @@ export async function submitPrintPack(req, res) {
       // Cắt đôi hay in nguyên tờ theo khung thật sự được in (gói ảnh nhỏ chưa có khung nhỏ thì
       // ghép khung lớn: không được cắt đôi), không theo khổ của gói.
       printSize: isSelfboothSize(b.printSize) ? b.printSize : d.printSize || b.printSize || "full",
-      copies: 1,
+      copies: repeated ? n : 1,
       frameName: d.frameName,
       file: files[0],
       sheets,
       width: sheets[0].width,
       height: sheets[0].height,
-      requestKey: d.requestKey,
+      requestKey,
       requestFingerprint: fingerprint,
+      ...(saveOnly && { operatorPrint: true }),
       // Phòng Selfbooth (như web Selfbooth): lệnh in lên Hàng chờ in, nhân viên ở quầy bấm In ra máy DS820.
-      spoolStatus: unprinted ? "failed" : archived ? "sent" : direct ? "sending" : isSelfboothSize(b.printSize) ? "idle"
+      spoolStatus: saveOnly ? "idle" : unprinted ? "failed" : archived ? "sent" : direct ? "sending" : isSelfboothSize(b.printSize) ? "idle"
         : await initialSpoolStatus(b.room),
       ...(isSelfboothSize(b.printSize) && !direct && !archived && { spoolMessage: "Chờ quầy in (Hàng chờ in)." }),
-      ...(archived && { spoolMessage: unprinted
+      ...(archived && { spoolMessage: saveOnly ? "Tờ mẫu đã lưu để in tại quầy." : unprinted
         ? "Máy chụp chưa in được tờ này (RX1 chưa kết nối hoặc không xác nhận). Kiểm tra khay giấy rồi bấm In lại qua RX1."
         : "Kiosk đã gửi trực tiếp tới hàng in RX1; file được lưu để xem và in lại." }),
       ...(direct && { spoolLeaseId: randomUUID(), spoolLeaseUntil: new Date(Date.now() + 5 * 60_000),
@@ -327,10 +343,10 @@ export async function submitPrintPack(req, res) {
   } catch (e) {
     await Promise.allSettled(saves); // remove only after every upload has finished
     await deleteMedia(files).catch(() => {});
-    await releaseSheets(b._id, n);
+    if (!saveOnly) await releaseSheets(b._id, n);
     if (e.code === 11000) {
       const previous = await PrintJob.findOne({
-        requestKey: d.requestKey,
+        requestKey,
         booking: b._id,
       }).select("+requestFingerprint");
       if (previous)
@@ -349,6 +365,7 @@ albumsRouter.post("/:token/print-pack", printLimit, printBody, submitPrintPack);
 albumsRouter.post("/:token/print-archive", printLimit, printBody, (req, res) => {
   req.archivePrint = true;
   req.archiveUnprinted = req.query.result === "failed";
+  req.archiveSaved = req.query.result === "saved";
   return submitPrintPack(req, res);
 });
 
