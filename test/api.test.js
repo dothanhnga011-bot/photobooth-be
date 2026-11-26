@@ -1671,6 +1671,9 @@ test("prints follow the package quota; staff sell extra sheets and cancelled job
   assert.equal(album.body.printSheets, 0);
   const tooMany = await send([sheet, sheet, sheet]).expect(409);
   assert.match(tooMany.body.message, /còn 2\/2 tờ in/);
+  assert.equal(tooMany.body.code, "PRINT_QUOTA");
+  assert.equal(tooMany.body.prints, 2);
+  assert.equal(tooMany.body.printSheets, 0);
   const concurrent = await Promise.all([
     send([sheet, sheet]),
     send([sheet, sheet]),
@@ -1682,6 +1685,8 @@ test("prints follow the package quota; staff sell extra sheets and cancelled job
   );
   const job = concurrent.find((r) => r.status === 201).body;
   assert.equal(job.printSheets, 2);
+  assert.equal(concurrent.find((r) => r.status === 409).body.printSheets, 2,
+    "the rejection reports the updated quota after a concurrent reservation");
   const used = await send([sheet]).expect(409);
   assert.match(used.body.message, /đã dùng hết 2 tờ in/);
 

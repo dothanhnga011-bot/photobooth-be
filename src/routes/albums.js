@@ -279,7 +279,18 @@ export async function submitPrintPack(req, res) {
   const n = d.sheets.length * archiveCopies;
   if (saveOnly && n !== 1) fail(400, "Chỉ lưu một tờ mẫu cho đơn PTB.");
   const reserved = saveOnly ? b : await reserveSheets(b, n, d.frameName);
-  if (!reserved) fail(409, quotaMessage(printQuota(b), b.printSheets || 0));
+  if (!reserved) {
+    // A concurrent request may have used part of the quota since this booking was read.
+    const latest = await Booking.findById(b._id).select("prints printSheets").lean();
+    if (!latest) fail(404, "Album không tồn tại hoặc đã hết hạn lưu trữ.");
+    const { prints, printSheets } = quota(latest);
+    return res.status(409).json({
+      code: "PRINT_QUOTA",
+      message: quotaMessage(prints, printSheets),
+      prints,
+      printSheets,
+    });
+  }
   // Kiosk prints identical copies. Archive one master so the counter can
   // print exactly one extra sheet even if the guest initially printed several.
   const repeated = archived && n > 1 && d.sheets.every(({ buffer }) => buffer.equals(d.sheets[0].buffer));
