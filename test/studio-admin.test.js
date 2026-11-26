@@ -388,11 +388,26 @@ test("guests can buy a session at the kiosk with cash; test mode skips payment w
   assert.equal(stored.paymentMethod, "cash");
   assert.equal(stored.source, "kiosk");
   assert.equal(stored.prints, 2, "no print count sent: the package's sheets");
+  // Khách đút dư 50.000 đ (máy không trả tiền thừa): Đơn hàng thấy số tiền đút vào máy; nhân viên thối lại
+  // rồi ghi nhận một lần.
+  const listed = (await staff.get(`/api/admin/bookings?date=${today()}`).expect(200)).body
+    .find((b) => b._id === first.booking._id);
+  assert.equal(listed.cashReceived, 150000);
+  assert.equal(listed.changeReturnedAt, undefined);
+  const returned = (await staff.patch(`/api/admin/bookings/${first.booking._id}`)
+    .send({ changeReturned: true }).expect(200)).body;
+  assert.ok(returned.changeReturnedAt);
+  assert.match(returned.changeReturnedBy, /^Lễ tân/);
+  assert.match((await staff.patch(`/api/admin/bookings/${first.booking._id}`)
+    .send({ changeReturned: true }).expect(409)).body.message, /Đã ghi nhận thối tiền/);
+  assert.equal((await Booking.findById(first.booking._id).lean()).total, 100000, "revenue stays the package price");
   await request(app).post("/api/kiosk/start").send({ captureToken: first.captureToken }).expect(200);
   const test = (await request(app).post("/api/kiosk/sale").send(sale({ skip: true })).expect(201)).body;
   const free = await Booking.findById(test.booking._id).lean();
   assert.equal(free.paid, false);
   assert.equal(free.total, 0);
+  assert.match((await staff.patch(`/api/admin/bookings/${test.booking._id}`)
+    .send({ changeReturned: true }).expect(409)).body.message, /không có tiền thừa/);
   const day = today();
   const summary = (await admin.get(`/api/admin/stats/summary?from=${day}&to=${day}`).expect(200)).body;
   assert.equal(summary.orders, 1, "test sessions are not orders");

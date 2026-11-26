@@ -921,7 +921,11 @@ export const openapi = {
     "/api/admin/bookings/{id}": {
       patch: {
         tags: ["Quầy & vé"],
-        summary: "Đổi trạng thái vé (vd. hủy vé thử) / đánh dấu đã in",
+        summary: "Đổi trạng thái vé (vd. hủy vé thử) / đánh dấu đã in / ghi nhận thu tiền, thối tiền",
+        description:
+          "`collected`: lượt chụp phòng Selfbooth trả tiền ở quầy. `changeReturned: true`: khách đút dư tiền ở máy " +
+          "chụp (máy nhận tiền không trả tiền thừa, `cashReceived` > `total`) và nhân viên đã thối lại phần dư — " +
+          "lưu `changeReturnedAt`, `changeReturnedBy`; đơn không dư tiền hoặc đã ghi nhận trả 409.",
         security: loggedIn,
         parameters: [pathParam("id", "Mã vé (_id)")],
         requestBody: body(
@@ -933,6 +937,8 @@ export const openapi = {
               "cancelled",
             ]),
             printed: { type: "boolean" },
+            collected: enumOf(["cash", "transfer"]),
+            changeReturned: { type: "boolean", enum: [true] },
           },
           [],
           { status: "cancelled" },

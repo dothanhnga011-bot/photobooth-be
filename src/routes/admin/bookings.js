@@ -14,6 +14,11 @@ export const bookingsRouter = Router();
 export const BOOKING_RANGE_LIMIT = 2000;
 const LIST_OMIT = "-photos -cashBills -extraSales -captureSeenAt -captureStartedAt -captureEndsAt " +
   "-nextPhotoNumber -codeExpiresAt -updatedAt";
+// Tiền khách đút dư ở máy chụp (máy nhận tiền không trả tiền thừa), nhân viên thối lại ở quầy.
+export const changeDue = (b) =>
+  b.source === "kiosk" && b.paymentMethod === "cash" && b.paid
+    ? Math.max(0, (Number(b.cashReceived) || 0) - (Number(b.total) || 0))
+    : 0;
 
 // Số đơn chờ thu tiền, hiện cạnh mục "Đơn hàng" trên thanh bên quản trị:
 // - phiếu quầy tạo hôm nay mà nhân viên chưa bấm "Xác nhận đã thu" (phiếu bỏ dở từ hôm trước không tính
@@ -132,6 +137,8 @@ bookingsRouter.patch("/bookings/:id", async (req, res) => {
       paymentReceived: z.boolean().optional(),
       // Lượt chụp phòng Selfbooth trả tiền ở quầy: nhân viên ghi nhận đã thu (tiền mặt / chuyển khoản).
       collected: z.enum(["cash", "transfer"]).optional(),
+      // Khách đút dư tiền ở máy chụp (máy không trả tiền thừa): nhân viên đã thối lại phần dư.
+      changeReturned: z.literal(true).optional(),
     })
     .parse(req.body);
   const b = await Booking.findById(id.parse(req.params.id));
@@ -157,7 +164,15 @@ bookingsRouter.patch("/bookings/:id", async (req, res) => {
     fail(400, "Phiên chụp chưa hoàn tất.");
   if (d.collected && (b.paid || b.source !== "selfbooth" || !["checked_in", "completed"].includes(b.status)))
     fail(409, b.paid ? "Đơn này đã thu tiền." : "Chỉ ghi nhận thu tiền ở quầy cho lượt chụp phòng Selfbooth.");
-  const { paymentReceived, collected, ...changes } = d;
+  if (d.changeReturned && changeDue(b) <= 0)
+    fail(409, "Đơn này không có tiền thừa cần thối lại.");
+  if (d.changeReturned && b.changeReturnedAt)
+    fail(409, "Đã ghi nhận thối tiền cho đơn này.");
+  const { paymentReceived, collected, changeReturned, ...changes } = d;
+  if (changeReturned) {
+    changes.changeReturnedAt = new Date();
+    changes.changeReturnedBy = req.user.name;
+  }
   if (collected) {
     changes.paid = true;
     changes.paidAt = new Date();
@@ -173,7 +188,7 @@ bookingsRouter.patch("/bookings/:id", async (req, res) => {
     changes.paid = false;
   }
   const updated = await Booking.findOneAndUpdate(
-    { _id: b._id, status: b.status, customerDataDeletedAt: null },
+    { _id: b._id, status: b.status, customerDataDeletedAt: null, ...(changeReturned && { changeReturnedAt: null }) },
     changes,
     { new: true },
   );

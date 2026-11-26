@@ -22,6 +22,10 @@ const bookingSchema = new Schema(
     // Tiền máy nhận tiền đã nhận (có thể dư so với giá gói) và từng tờ tiền.
     cashReceived: Number,
     cashBills: [{ _id: false, amount: Number, at: Date }],
+    // Máy nhận tiền không trả tiền thừa: khách đút dư (cashReceived > total) thì nhân viên thối lại ở quầy
+    // rồi bấm "Đã thối tiền" trong Đơn hàng.
+    changeReturnedAt: Date,
+    changeReturnedBy: String,
     issuedBy: { type: Schema.Types.ObjectId, ref: "User" },
     total: Number,
     discount: Number,
