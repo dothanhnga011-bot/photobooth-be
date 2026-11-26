@@ -2,8 +2,11 @@ import { Booking } from "../models/index.js";
 import { finishCapture, isOverdue } from "../services/capture.js";
 import { albumMediaExpiry, mediaLinks, photoExpiry, photoLinks } from "../services/media.js";
 import { fail } from "./validation.js";
+import { visibleTo } from "./album-viewer.js";
 
-export const publicBooking = (b, { photoKey } = {}) => ({
+// viewer (album của khách): chỉ ảnh máy đó thấy (album-viewer.js), đánh số lại 1, 2, 3… theo đúng những ảnh
+// đó; mine đánh dấu ảnh máy đó tự tải lên. Không có viewer (quản trị): mọi ảnh chưa xoá.
+export const publicBooking = (b, { photoKey, viewer } = {}) => ({
   ...(b.toObject ? b.toObject() : b),
   accessToken: undefined,
   captureSession: undefined,
@@ -12,11 +15,12 @@ export const publicBooking = (b, { photoKey } = {}) => ({
   extraPrintKeys: undefined,
   prints: printQuota(b),
   photos: b.photos
-    .filter((p) => !p.deleted)
+    .filter(viewer === undefined ? (p) => !p.deleted : visibleTo(viewer))
     .map((p, i) => ({
-      number: p.number || i + 1,
+      number: viewer === undefined ? p.number || i + 1 : i + 1,
       id: p._id,
       kind: p.kind,
+      mine: viewer !== undefined && p.owner && p.owner === viewer ? true : undefined,
       // Mỗi ảnh lưu 3 ngày kể từ lúc chụp.
       expiresAt: photoExpiry(p),
       // Máy chụp ghép ảnh "đang lưu" với ảnh đã lưu (không nạp lại ảnh đang hiện).

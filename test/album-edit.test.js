@@ -37,12 +37,16 @@ test("a Selfbooth album lets the guest delete photos (numbers close up); a photo
   const photo = (n) => ({ _id: new mongoose.Types.ObjectId(), kind: "original", number: n, file: `f${n}.jpg` });
   const photos = [photo(1), photo(2), photo(3)];
   await booking("selfbooth-delete", { photos });
-  const after = (await request(app).delete("/api/albums/selfbooth-delete/photos")
+  const phone = request.agent(app);
+  const after = (await phone.delete("/api/albums/selfbooth-delete/photos")
     .send({ ids: [String(photos[0]._id)] }).expect(200)).body;
   const visible = after.photos.filter((p) => p.kind === "original");
   assert.deepEqual(visible.map((p) => [p.id, p.number]), [[String(photos[1]._id), 1], [String(photos[2]._id), 2]]);
+  assert.equal((await phone.get("/api/albums/selfbooth-delete").expect(200)).body.photos.length, 2);
+  // Ảnh máy chụp chỉ ẩn trên điện thoại đã xoá: người khác quét mã vẫn thấy đủ 3 ảnh.
+  assert.equal((await request(app).get("/api/albums/selfbooth-delete").expect(200)).body.photos.length, 3);
   const stored = await Booking.findOne({ accessToken: "selfbooth-delete" }).lean();
-  assert.equal(stored.photos.find((p) => String(p._id) === String(photos[0]._id)).deleted, true, "hidden, purged later");
+  assert.equal(stored.photos.find((p) => String(p._id) === String(photos[0]._id)).hiddenFor.length, 1, "hidden on that phone");
   await request(app).delete("/api/albums/selfbooth-delete/photos").send({ ids: [] }).expect(400);
   await booking("photobooth-delete", { printSize: "full", photos: [photo(1)] });
   await request(app).delete("/api/albums/photobooth-delete/photos").send({ ids: [String(photos[0]._id)] }).expect(404);

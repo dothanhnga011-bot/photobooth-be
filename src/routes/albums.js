@@ -28,6 +28,7 @@ import { printExtension, printContentType, validatePrintImage } from "../service
 import { printLimit } from "../middleware/rate-limits.js";
 import { fail, id, token } from "./validation.js";
 import { directUploadRequest, photoBody, readPhotoUpload, storedOriginal } from "./photo-upload.js";
+import { albumViewer, guestUpload, visibleTo } from "./album-viewer.js";
 import { createDirectUpload, directUploadsEnabled } from "../services/direct-upload.js";
 import { printBody, readPrintPack } from "./print-upload.js";
 import {
@@ -45,6 +46,11 @@ import {
 } from "./print-helpers.js";
 
 export const albumsRouter = Router();
+// Mã máy của điện thoại đang mở album (ảnh tải lên chỉ máy đó thấy) — album-viewer.js.
+albumsRouter.use((req, res, next) => {
+  req.albumViewer = albumViewer(req, res);
+  next();
+});
 
 // Đọc lần lượt từng tệp để nén ZIP, bỏ qua tệp đã mất. Tệp kế tiếp được tải từ kho trong lúc
 // tệp này đang gửi cho khách (giữ tối đa 2 ảnh trong bộ nhớ), nên hai việc không phải chờ nhau.
@@ -67,7 +73,7 @@ async function* readFiles(items) {
 // không có trang tra cứu công khai bằng mã vé 6 số.
 albumsRouter.get("/:token", async (req, res) => {
   const booking = await timed(res, "album-read", album(req));
-  const json = await timed(res, "album-links", albumBooking(booking));
+  const json = await timed(res, "album-links", albumBooking(booking, Date.now(), { viewer: req.albumViewer }));
   // Carries short-lived storage links: never kept by a shared cache. Polls in the same link
   // window send the same body, so the browser revalidates (ETag) and gets an empty 304.
   res.set("Cache-Control", "private, no-cache");
@@ -88,7 +94,8 @@ albumsRouter.get("/:token/photos/:photo", async (req, res) => {
     },
   });
   const p = b.photos.id(req.params.photo);
-  if (!p || p.deleted || photoExpiry(p).getTime() <= Date.now())
+  // Ảnh điện thoại khác tải lên, hoặc ảnh máy này đã xoá: như không có.
+  if (!p || !visibleTo(req.albumViewer)(p) || photoExpiry(p).getTime() <= Date.now())
     fail(404, "Ảnh không còn trong album hoặc đã hết hạn lưu trữ.");
   res.set(
     "Cache-Control",
@@ -137,7 +144,7 @@ albumsRouter.get("/:token/download", async (req, res) => {
   const b = await album(req);
   requireMedia(b);
   const photos = originals(b).filter(
-    (p) => photoExpiry(p).getTime() > Date.now(),
+    (p) => visibleTo(req.albumViewer)(p) && photoExpiry(p).getTime() > Date.now(),
   );
   if (photos.some((p) => p.originalPending))
     fail(409, "Ảnh gốc đang tải lên. Vui lòng chờ rồi lưu album lại.");
@@ -389,7 +396,7 @@ albumsRouter.post("/:token/photos/upload-url", async (req, res) => {
   });
   // Already saved (a lost reply): hand back the album instead of a second upload.
   if (b.photos?.some(p => p.clientKey === d.clientKey)) return res.json({ saved: true, booking: await albumBooking(await album(req), Date.now(),
-    req.get('X-Photo-Reply') === 'delta' ? { photoKey: d.clientKey } : {}) });
+    { viewer: req.albumViewer, ...(req.get('X-Photo-Reply') === 'delta' && { photoKey: d.clientKey }) }) });
   if (b.status !== "completed") fail(409, "Phiên chụp đã kết thúc.");
   res.json({ upload: await createDirectUpload(b._id, d.clientKey, d.size) });
 });
@@ -404,28 +411,37 @@ albumsRouter.post("/:token/photos", photoBody, async (req, res) => {
     b._id,
     d.buffer,
     { clientKey: d.clientKey, originalName: d.name, imported: true, mirrored: d.mirrored, precheck: b,
-      preview: d.preview, previewOnly: Boolean(d.later), storedOriginal: storedOriginal(b._id, d) },
+      preview: d.preview, previewOnly: Boolean(d.later), storedOriginal: storedOriginal(b._id, d),
+      // Khách tải ảnh từ điện thoại (trang album): chỉ điện thoại đó thấy ảnh này.
+      ...(guestUpload(req) && { owner: req.albumViewer }) },
   ));
-  res.status(201).json(await albumBooking(saved, Date.now(), req.get('X-Photo-Reply') === 'delta' ? { photoKey: d.clientKey } : {}));
+  res.status(201).json(await albumBooking(saved, Date.now(),
+    { viewer: req.albumViewer, ...(req.get('X-Photo-Reply') === 'delta' && { photoKey: d.clientKey }) }));
 });
-// Album phòng Selfbooth (tờ 20 × 30): khách xoá ảnh như bên Selfbooth — ảnh bị ẩn rồi được dọn cùng ảnh
-// hết hạn; các ảnh còn lại đánh số lại 1, 2, 3… trong cùng một lần ghi (không mất ảnh khi điện thoại đang
-// tải ảnh lên cùng lúc). Album phòng Photobooth vẫn chỉ để xem.
+// Album phòng Selfbooth (tờ 20 × 30): khách xoá ảnh như bên Selfbooth, nhưng chỉ cho máy mình — ảnh máy
+// chụp chỉ ẩn trên điện thoại này (bạn bè quét mã vẫn thấy đủ); ảnh chính máy này tải lên thì xoá hẳn (ẩn
+// rồi được dọn cùng ảnh hết hạn); ảnh điện thoại khác tải lên thì không đụng tới. Một lần ghi (không mất ảnh
+// khi điện thoại đang tải ảnh lên cùng lúc). Album phòng Photobooth vẫn chỉ để xem.
 albumsRouter.delete("/:token/photos", async (req, res) => {
   const b = await album(req, { status: 1, captureEndsAt: 1, printSize: 1 });
   if (!isSelfboothSize(b.printSize)) fail(404, "Không tìm thấy.");
   const ids = [...new Set(z.array(id).min(1).max(200).parse(req.body?.ids))]
     .map((photo) => new mongoose.Types.ObjectId(photo));
   if (b.status !== "completed") fail(409, "Phiên chụp chưa hoàn thành.");
+  const viewer = req.albumViewer;
   await Booking.updateOne({ _id: b._id, status: "completed" }, [
     { $set: { photos: { $map: {
       input: { $ifNull: ["$photos", []] },
       as: "p",
-      in: { $cond: [{ $in: ["$$p._id", ids] }, { $mergeObjects: ["$$p", { deleted: true }] }, "$$p"] },
+      in: { $cond: [{ $not: [{ $in: ["$$p._id", ids] }] }, "$$p",
+        { $cond: [{ $eq: ["$$p.owner", viewer] }, { $mergeObjects: ["$$p", { deleted: true }] },
+          { $cond: [{ $not: ["$$p.owner"] },
+            { $mergeObjects: ["$$p", { hiddenFor: { $setUnion: [{ $ifNull: ["$$p.hiddenFor", []] }, [viewer]] } }] },
+            "$$p"] }] }] },
     } } } },
     ...renumberPhotoStages(),
   ]);
-  res.json(await albumBooking(await album(req)));
+  res.json(await albumBooking(await album(req), Date.now(), { viewer }));
 });
 // Ảnh xem trước tới trước, ảnh gốc tới sau: máy chụp gửi ảnh gốc của máy ảnh cho ảnh album đã có.
 // 1) Xin URL tải thẳng lên kho R2 cho đúng ảnh đó (ảnh đã có ảnh gốc: { saved: true }; kho MongoDB: 404,

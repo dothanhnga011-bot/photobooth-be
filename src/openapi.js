@@ -1312,6 +1312,7 @@ export const openapi = {
       get: {
         tags: ["Album khách"],
         summary: "Thông tin album",
+        description: "Mỗi điện thoại có cookie `album_device` (HttpOnly, path /api/albums; máy chủ tự cấp lần đầu). Ảnh máy chụp: ai quét mã cũng thấy; ảnh khách tải lên (X-Album-Guest: 1) chỉ điện thoại đó thấy (`mine: true`); ảnh máy này đã xoá thì ẩn. Số ảnh đánh lại 1, 2, 3… theo những ảnh máy đó thấy.",
         parameters: [tokenParam],
         responses: { ...ok("Album", ref("Booking")), ...errors(404) },
       },
@@ -1377,8 +1378,8 @@ export const openapi = {
     "/api/albums/{token}/photos": {
       post: {
         tags: ["Album khách"],
-        summary: "Máy chụp gửi bổ sung ảnh vào album (ảnh còn kẹt do mất mạng, gửi sau khi chụp xong)",
-        description: "Ưu tiên gửi file JPEG/PNG/WebP trực tiếp (tối đa 40 MB) với X-Photo-Key, X-Photo-Name; JSON base64 cũ vẫn được hỗ trợ.",
+        summary: "Thêm ảnh vào album: máy chụp gửi bổ sung ảnh, hoặc khách tải ảnh từ điện thoại (album Selfbooth)",
+        description: "Ưu tiên gửi file JPEG/PNG/WebP trực tiếp (tối đa 40 MB) với X-Photo-Key, X-Photo-Name; JSON base64 cũ vẫn được hỗ trợ. Khách tải từ điện thoại gửi thêm `X-Album-Guest: 1`: ảnh chỉ điện thoại đó (cookie `album_device`) thấy. Máy chụp không gửi header này.",
         parameters: [tokenParam, ...photoHeaders()],
         requestBody: photoBody(
           {

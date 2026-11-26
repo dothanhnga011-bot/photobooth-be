@@ -85,6 +85,11 @@ const bookingSchema = new Schema(
         // originalMirrored is how the coming original must be flipped.
         originalPending: Boolean,
         originalMirrored: Boolean,
+        // Album phòng Selfbooth: ảnh khách tải lên từ điện thoại chỉ điện thoại đó thấy (owner = mã máy
+        // đã băm, xem routes/album-viewer.js); ảnh máy chụp không có owner, ai quét mã cũng thấy.
+        owner: String,
+        // Mã máy (đã băm) của các điện thoại đã xoá ảnh máy chụp này: chỉ ẩn trên máy đó, người khác vẫn thấy.
+        hiddenFor: { type: [String], default: undefined },
       },
     ],
     video: { file: String, mimeType: String, size: Number },

@@ -236,7 +236,7 @@ export function appendCapture(
   bookingId,
   buffer,
   { clientKey, originalName = "photo.jpg", imported = false, mirrored = false, precheck, preview, storedOriginal,
-    previewOnly = false } = {},
+    previewOnly = false, owner } = {},
 ) {
   const key = clientKey && `${bookingId}:${clientKey}`;
   if (key && uploads.has(key)) return uploads.get(key);
@@ -330,6 +330,8 @@ export function appendCapture(
         mirrored: media.previewOnly ? false : Boolean(mirrored),
         sourcePreserved: media.sourcePreserved,
         ...(media.previewOnly && { originalPending: true, originalMirrored: Boolean(mirrored) }),
+        // Ảnh khách tải lên từ điện thoại: chỉ điện thoại đó thấy (routes/album-viewer.js).
+        ...(owner && { owner }),
       };
       // One database round trip: number, append and expiry are computed by the database in a
       // single atomic update. The guards (status, not already saved) are part of the filter.
