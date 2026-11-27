@@ -2448,6 +2448,12 @@ test("password changes invalidate other sessions and retain the current session"
     .expect(200);
   await one.get("/api/auth/me").expect(200);
   await two.get("/api/auth/me").expect(401);
+  // /session: cùng kết quả nhưng chưa đăng nhập / phiên cũ là null (200), không phải lỗi 401.
+  assert.equal((await one.get("/api/auth/session").expect(200)).body.email, "staff@test.local");
+  assert.equal((await two.get("/api/auth/session").expect(200)).body, null);
+  const anonymous = await request(app).get("/api/auth/session").expect(200);
+  assert.equal(anonymous.body, null);
+  assert.equal(anonymous.headers["cache-control"], "no-store");
   await request(app)
     .post("/api/auth/login")
     .send({ email: "staff@test.local", password: "TestPassword!123" })

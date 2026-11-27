@@ -766,6 +766,13 @@ export const openapi = {
         responses: { ...ok("Tài khoản"), ...errors(401) },
       },
     },
+    "/api/auth/session": {
+      get: {
+        tags: ["Đăng nhập"],
+        summary: "Đã đăng nhập chưa? Tài khoản, hoặc null khi chưa đăng nhập (không trả lỗi 401)",
+        responses: { ...ok("Tài khoản hoặc null") },
+      },
+    },
     "/api/auth/logout": {
       post: {
         tags: ["Đăng nhập"],

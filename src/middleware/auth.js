@@ -34,6 +34,18 @@ export async function auth(req, res, next) {
     res.status(401).json({ message: "Vui lòng đăng nhập." });
   }
 }
+// Tài khoản của phiên đăng nhập, hoặc null (chưa đăng nhập, phiên hết hạn / bị đăng xuất từ xa, lỗi đọc).
+// Dùng cho GET /api/auth/session: trang quản trị hỏi "đã đăng nhập chưa?" mà không nhận lỗi 401.
+export async function sessionUser(req) {
+  try {
+    const p = jwt.verify(req.cookies.session || "", config.secret);
+    const user = await userCache.get(String(p.sub), () =>
+      User.findById(p.sub).select("+sessionVersion").lean());
+    return user?.active && (p.version || 0) === (user.sessionVersion || 0) ? user : null;
+  } catch {
+    return null;
+  }
+}
 export const isAdmin = (req) => req.user?.role === "admin";
 // Quyền chủ cửa hàng cấp cho từng nhân viên (Tài khoản → Phân quyền). Tài khoản chưa lưu quyền
 // dùng bộ mặc định: đúng những việc lễ tân làm được trước khi có phân quyền.
