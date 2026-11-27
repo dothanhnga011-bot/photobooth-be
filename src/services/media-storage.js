@@ -375,6 +375,7 @@ export async function getStorageSummary({
     r2: {
       active,
       configured,
+      autoCleanOrphans: configured && Boolean(config.r2.autoCleanOrphans),
       available: r2Available,
       bucket: config.r2.bucket,
       files: r2Available ? r2Sizes.total.files : null,

@@ -56,6 +56,12 @@ tờ in tính 72 giờ từ lúc gửi. Video và ảnh ghép xoá cùng ảnh c
 quá hạn và không còn file/lệnh in, tên, số điện thoại, token album và dữ liệu phiên chụp cũng bị xoá;
 giữ sổ bán hàng để thống kê/đối soát doanh thu. Album đã dọn dữ liệu trả 404.
 
+Nếu `R2_PREFIX` dành riêng cho một cơ sở dữ liệu Photobooth, đặt
+`R2_AUTO_CLEAN_ORPHANS=true` trong môi trường backend để tự dọn file R2 không còn
+album hay lệnh in nào dùng. Backend quét khi khởi động và mỗi giờ, chỉ dọn file
+cũ hơn hạn lưu cộng thêm 2 giờ. Để biến này tắt khi nhiều cơ sở dữ liệu dùng
+chung một prefix. Ảnh và tờ in đã hết hạn vẫn được dọn mỗi 15 phút.
+
 Render miễn phí có thể ngủ, nên nên thêm rule dự phòng trong bucket → **Settings →
 Object Lifecycle Rules → Add rule**: prefix `media/`, delete sau **4 ngày** khi TTL là 72 giờ.
 Rule này dọn cả tệp mồ côi nếu upload lỗi hoặc server tắt trước khi lưu tham chiếu.

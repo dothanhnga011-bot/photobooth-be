@@ -75,8 +75,6 @@ storageRouter.delete("/customers/:id", admin, async (req, res) => {
 storageRouter.post("/cleanup-expired", admin, async (req, res) => {
   const before = await getStorageSummary({ freshR2: true });
   await purgeExpiredMedia();
-  // Bucket files nothing refers to any more are removed only when an admin asks (this button),
-  // never automatically: they may belong to another database / an earlier setup.
   await purgeStaleOrphans();
   const summary = await getStorageSummary({ freshR2: true });
   // Measured media bytes removed, not estimated database allocation recovery.

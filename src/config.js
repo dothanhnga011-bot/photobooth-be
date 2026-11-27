@@ -31,6 +31,7 @@ export const config = {
     bucket: process.env.R2_BUCKET || "nxc-media",
     prefix: process.env.R2_PREFIX || "media/",
     limitGB: Number(process.env.R2_STORAGE_LIMIT_GB || 10),
+    autoCleanOrphans: process.env.R2_AUTO_CLEAN_ORPHANS === "true",
   },
   // Tuỳ chọn: token Cloudflare (quyền Account Analytics: Read) để trang Dung lượng ảnh đọc đúng số GB-tháng R2
   // Cloudflare tính tiền (kể cả những ngày trước khi máy chủ bắt đầu tự đo). Tài khoản mặc định = R2_ACCOUNT_ID.

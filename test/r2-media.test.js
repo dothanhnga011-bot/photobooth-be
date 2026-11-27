@@ -21,7 +21,7 @@ import {
 import { getStorageSummary } from "../src/services/media-storage.js";
 import { resetR2PeakMemory } from "../src/services/r2-billing.js";
 import { whenPrintSourcesIdle } from "../src/services/print-source.js";
-import { purgeStaleOrphans } from "../src/services/orphans.js";
+import { purgeStaleOrphans, startOrphanCleanup } from "../src/services/orphans.js";
 import {
   r2Storage,
   invalidateR2Inventory,
@@ -350,6 +350,7 @@ beforeEach(async () => {
   await whenPrintSourcesIdle();
   config.mediaStorageProvider = "gridfs";
   config.r2.secretAccessKey = "test-only";
+  config.r2.autoCleanOrphans = false;
   objects.clear();
   calls = [];
   failPut = undefined;
@@ -1062,12 +1063,37 @@ test("bucket files nothing uses any more are counted as cleanable once past rete
   assert.equal(objects.has(recent.slice(3)), true, "a fresh upload that is not committed yet stays");
   assert.equal(objects.has(used.slice(3)), true, "a referenced file is never treated as an orphan");
   assert.equal(cleaned.body.summary.expired.orphans, 0);
-  // The automatic 15-minute purge never deletes them: only an admin's cleanup does.
+  // A shared prefix still needs manual cleanup; a dedicated prefix can use the scheduler.
   const again = await saveMedia("another-old-file.jpg", Buffer.alloc(9), "image/jpeg");
   objects.get(again.slice(3)).modified = longAgo;
   invalidateR2Inventory();
   await purgeExpiredMedia();
+  assert.equal(startOrphanCleanup(), null);
   assert.equal(objects.has(again.slice(3)), true);
+  assert.equal((await getStorageSummary()).r2.autoCleanOrphans, false);
+
+  // The scheduler lists just the configured prefix and preserves live references and recent uploads.
+  const grace = await saveMedia("in-grace-period.jpg", Buffer.alloc(8), "image/jpeg");
+  objects.get(grace.slice(3)).modified = now - MEDIA_TTL_MS - 60 * 60 * 1000;
+  objects.set("other-studio/old.jpg", { bytes: Buffer.alloc(5), modified: longAgo });
+  config.r2.autoCleanOrphans = true;
+  calls = [];
+  const timer = startOrphanCleanup();
+  try {
+    assert.ok(timer);
+    assert.equal(calls[0]?.type, "ListObjectsV2Command", "startup runs before any admin request");
+    const automatic = purgeStaleOrphans();
+    assert.equal(purgeStaleOrphans(), automatic, "a manual request joins the active sweep");
+    assert.equal(await automatic, 1);
+    assert.equal(objects.has(again.slice(3)), false);
+    assert.equal(objects.has(recent.slice(3)), true);
+    assert.equal(objects.has(grace.slice(3)), true);
+    assert.equal(objects.has(used.slice(3)), true);
+    assert.equal(objects.has("other-studio/old.jpg"), true);
+    assert.equal((await getStorageSummary()).r2.autoCleanOrphans, true);
+  } finally {
+    clearInterval(timer);
+  }
 });
 
 test("a booth uploads the camera original straight to storage and commits only its preview", async () => {

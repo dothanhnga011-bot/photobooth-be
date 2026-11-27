@@ -1,3 +1,4 @@
+import { config } from "../config.js";
 import { Booking, PrintJob } from "../models/index.js";
 import { deleteMedia, MEDIA_TTL_MS } from "./media.js";
 import { isStaleOrphan, ORPHAN_GRACE_MS } from "./media-storage.js";
@@ -26,10 +27,7 @@ async function referencedMedia() {
   return names;
 }
 
-// Remove bucket files nothing refers to any more once they are past retention (isStaleOrphan).
-// Works without the optional R2 lifecycle rule and after switching to a new database.
-export async function purgeStaleOrphans(now = new Date()) {
-  if (!r2Configured()) return 0;
+async function removeStaleOrphans(now) {
   const files = await readR2Inventory({ fresh: true });
   const oldEnough = files.filter((f) => f.modified <= now.getTime() - MEDIA_TTL_MS - ORPHAN_GRACE_MS);
   if (!oldEnough.length) return 0;
@@ -37,4 +35,20 @@ export async function purgeStaleOrphans(now = new Date()) {
   const stale = oldEnough.filter((f) => isStaleOrphan(f, referenced, now.getTime()));
   if (stale.length) await deleteMedia(stale.map((f) => f.filename));
   return stale.length;
+}
+
+let cleanup;
+// Share a sweep between the scheduler and the admin button.
+export function purgeStaleOrphans(now = new Date()) {
+  if (!r2Configured()) return Promise.resolve(0);
+  return cleanup ??= removeStaleOrphans(now).finally(() => { cleanup = undefined; });
+}
+
+export function startOrphanCleanup() {
+  // A shared R2 prefix may still have files referenced by a different database.
+  if (!r2Configured() || !config.r2.autoCleanOrphans) return null;
+  const run = () => purgeStaleOrphans().catch((error) =>
+    console.error("Dọn file R2 không còn dùng thất bại:", error.message));
+  run();
+  return setInterval(run, 60 * 60 * 1000).unref();
 }

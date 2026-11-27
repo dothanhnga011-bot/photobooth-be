@@ -5,6 +5,7 @@ import { budget, describeBudget } from "./services/capacity.js";
 import { app } from "./app.js";
 import { migrateCounterIndexes } from "./services/counter-indexes.js";
 import { startMediaCleanup } from "./services/media.js";
+import { startOrphanCleanup } from "./services/orphans.js";
 import Frame from "./models/Frame.js";
 import { removeActivityLogs, removeRetiredFeatureData } from "./services/activity-log-cleanup.js";
 import { validateMediaStorage } from "./services/r2.js";
@@ -64,6 +65,7 @@ try {
   server.keepAliveTimeout = 65_000;
   server.headersTimeout = 66_000;
   startMediaCleanup();
+  startOrphanCleanup();
   // Đo dung lượng R2 mỗi giờ để tính GB-tháng (Cloudflare tính tiền theo đỉnh mỗi ngày).
   const { startR2UsageSampler } = await import("./services/r2-billing.js");
   startR2UsageSampler();

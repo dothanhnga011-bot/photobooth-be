@@ -520,6 +520,7 @@ export const openapi = {
         r2: object({
           active: { type: "boolean", description: "Ảnh mới được ghi vào R2" },
           configured: { type: "boolean" },
+          autoCleanOrphans: { type: "boolean", description: "Tự dọn file R2 không còn tham chiếu mỗi giờ" },
           available: { type: "boolean" },
           bucket: { type: "string" },
           files: { type: "integer", nullable: true },
