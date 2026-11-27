@@ -94,6 +94,25 @@ test("72-hour retention deletes every media variant and customer data while all 
   assert.equal(await purgeExpiredMedia(expiredAt), 0, "second pass is idempotent");
 });
 
+test("cleanup processes multiple booking batches and keeps unexpired photos in each album", async () => {
+  const now = Date.now();
+  const expired = photoId(now - MEDIA_TTL_MS - 60_000);
+  const recent = photoId(now - 60_000);
+  const count = 40;
+  await Booking.insertMany(Array.from({ length: count }, () => oldBooking(now, {
+    captureEndsAt: new Date(now - 60_000),
+    photos: [{ _id: expired, kind: "original" }, { _id: recent, kind: "original" }],
+  })));
+  assert.equal(await purgeExpiredMedia(new Date(now)), count);
+  const albums = await Booking.find().select("photos mediaExpiresAt").lean();
+  assert.equal(albums.length, count);
+  for (const album of albums) {
+    assert.deepEqual(album.photos.map((photo) => photo._id), [recent]);
+    assert.equal(album.mediaExpiresAt.getTime(), photoExpiry(album.photos[0]).getTime());
+  }
+  assert.equal(await purgeExpiredMedia(new Date(now)), 0);
+});
+
 test("only expired finished customers are pruned; active, future scheduled and recent cancelled tickets stay", async () => {
   const now = Date.now();
   const finished = await Booking.create(oldBooking(now, { photos: [] }));

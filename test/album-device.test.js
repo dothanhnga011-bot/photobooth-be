@@ -96,6 +96,9 @@ test("camera photos are shared; a phone's own upload is visible, downloadable an
   const final = await Booking.findById(b._id).lean();
   const byId = (id) => final.photos.find((p) => String(p._id) === id);
   assert.equal(byId(String(mine._id)).deleted, true);
+  assert.equal(byId(String(mine._id)).number, 3, "deleted photos retain their old number");
+  assert.equal(byId(String(late._id)).number, 3, "active photos are renumbered without gaps");
+  assert.equal(final.nextPhotoNumber, 3);
   assert.equal(byId(one).deleted, undefined, "a camera photo is never deleted for everyone by one guest");
   assert.equal(byId(one).hiddenFor.length, 1);
 });

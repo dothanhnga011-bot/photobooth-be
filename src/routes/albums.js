@@ -244,9 +244,15 @@ albumsRouter.get("/:token/prints/:job", async (req, res) => {
 });
 export async function submitPrintPack(req, res) {
   const d = readPrintPack(req);
-  const b = await album(req);
   const direct = req.directPrintScope;
   const archived = req.archivePrint === true;
+  const b = await album(req, {
+    code: 1, name: 1, room: 1, roomName: 1, branch: 1, printSize: 1,
+    prints: 1, printSheets: 1, status: 1, captureEndsAt: 1,
+    ...(archived
+      ? { createdAt: 1, mediaDeleted: 1, mediaExpiresAt: 1, "photos._id": 1 }
+      : { photos: { $elemMatch: { kind: "original", deleted: { $ne: true } } } }),
+  });
   // RX1 on the booth did not confirm the sheet: saved so staff print it again from Đơn hàng.
   const unprinted = archived && req.archiveUnprinted === true;
   const saveOnly = archived && req.archiveSaved === true;
@@ -369,7 +375,7 @@ export async function submitPrintPack(req, res) {
       if (previous)
         return res.json({
           ...publicJob(verifyReplay(previous)),
-          ...quota(await Booking.findById(b._id)),
+          ...quota(await Booking.findById(b._id).select("prints printSheets").lean()),
           ...(direct && { direct: { fresh: false } }),
         });
     }

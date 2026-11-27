@@ -209,7 +209,7 @@ try {
   watch(page);
   await page.goto(config.origin + "/");
   await page.waitForURL("**/admin");
-  await page.getByText("quét mã QR trên màn hình máy").waitFor();
+  await page.getByRole("heading", { name: "Đăng nhập studio" }).waitFor();
   for (const route of ["/gallery", "/booking"]) {
     await page.goto(config.origin + route);
     await page
@@ -231,7 +231,7 @@ try {
     }
   }
   assert.equal(
-    (await fetch(`${config.origin}/robots.txt`).then((r) => r.text())).trim(),
+    (await fetch(`${config.origin}/robots.txt`).then((r) => r.text())).replaceAll("\r\n", "\n").trim(),
     "User-agent: *\nDisallow: /",
   );
 
@@ -352,6 +352,7 @@ try {
 
   // ── Máy chụp trong phòng: khách chỉ chụp bằng máy ảnh, ảnh về thư mục X Acquire ──
   const kiosk = await context.newPage();
+  await kiosk.route("http://127.0.0.1:8789/**", (route) => route.abort());
   watch(kiosk);
   // Hộp chọn thư mục giả lập: thư mục X Acquire nằm trong bộ nhớ riêng của trình duyệt (OPFS).
   await kiosk.addInitScript(() => {
@@ -421,6 +422,8 @@ try {
       .waitFor({ timeout: 20000 });
   }
   await kiosk.getByRole("button", { name: "Chụp xong, chọn ảnh" }).click();
+  await kiosk.getByRole("heading", { name: /để chọn khung ảnh/ }).waitFor();
+  await kiosk.getByRole("button", { name: "Tiếp tục" }).click();
   // Chọn ảnh, màu ảnh và nhãn dán trên cùng một màn: chọn đủ 2 tấm của gói, chọn màu, dán nhãn dán
   // của tiệm rồi bấm In ảnh.
   await kiosk.getByRole("heading", { name: /để chọn ảnh & trang trí/ }).waitFor();
@@ -447,10 +450,10 @@ try {
   await print.click();
   await kiosk.getByRole("heading", { name: /Quét QR để tải ảnh/ }).waitFor();
   await kiosk.getByRole("img", { name: "Ảnh đã ghép khung" }).waitFor();
-  // Máy chủ chưa bật máy in tự động (config.dnpPrinter trống): máy chụp mời nhân viên in giúp.
+  // RX1 bị ngắt trong fixture: máy chụp lưu file lỗi để nhân viên in lại.
   await kiosk
     .getByRole("status")
-    .filter({ hasText: /Nhờ nhân viên in ảnh giúp bạn/ })
+    .filter({ hasText: /Chưa in được.*nhờ nhân viên in lại/ })
     .waitFor({ timeout: 30000 });
   // Việc chạy nền của máy chụp: chốt phiên, tải ảnh gốc lên album, gửi ảnh ghép và lệnh in.
   await until(async () => (await Booking.findById(booking._id)).status === "completed", "chốt phiên chụp");
@@ -494,6 +497,7 @@ try {
   }, "video tua nhanh");
   const sent = await until(() => PrintJob.findOne({ code: booking.code }), "lệnh in từ máy chụp");
   assert.equal(sent.sheets.length, 1, "Gói 1 tờ → một tờ in");
+  assert.equal(sent.spoolStatus, "failed");
   assert.equal(sent.frameName, "Hồng");
   assert.equal(await PrintJob.countDocuments({ code: booking.code }), 1);
 
@@ -601,8 +605,9 @@ try {
   assert.equal(composite.status(), 200);
   assert.match(composite.headers()["content-type"], /image\/jpeg/);
   const compositeImage = Buffer.from(await composite.body());
-  assert.equal((await sharp(compositeImage).metadata()).width, 1200);
-  assert.equal((await sharp(compositeImage).metadata()).height, 1800);
+  const { width, height } = await sharp(compositeImage).metadata();
+  assert.ok(width * height >= 19_900_000 && width * height <= 20_000_000);
+  assert.ok(Math.abs(width / height - 2 / 3) < 0.001);
   const [red, green, blue] = await pixel(compositeImage, 0.2, 0.2);
   assert.ok(red < 170 && green > 140 && Math.abs(red - blue) < 20,
     `Ô ảnh chứa ảnh khách chụp, không phải nền khung: ${red},${green},${blue}`);
@@ -650,13 +655,21 @@ try {
   await admin.getByRole("menuitem", { name: /Tải tất cả ảnh \(ZIP\)/ }).waitFor();
   await admin.getByRole("menuitem", { name: /Tải ảnh ghép khung/ }).waitFor();
   await admin.keyboard.press("Escape");
+  let localPrints = 0;
+  await admin.route("http://127.0.0.1:8789/**", async (route) => {
+    const health = new URL(route.request().url()).pathname === "/health";
+    if (!health) localPrints++;
+    await route.fulfill({
+      headers: { "Access-Control-Allow-Origin": "*" },
+      json: health ? { directPrint: 2 } : { sent: true },
+    });
+  });
   await order.getByRole("button", { name: /^In ảnh/ }).click();
   const printDialog = admin.getByRole("dialog", { name: `In ảnh đơn ${booking.code}` });
-  await printDialog.getByRole("img", { name: `Ảnh in của đơn ${booking.code}` }).waitFor();
-  assert.match(await printDialog.innerText(), /Số tờ trong file\s*1/);
-  await printDialog.getByLabel("Số bản in lại").selectOption("2");
-  await printDialog.getByRole("button", { name: "In lại ảnh" }).click();
-  await admin.getByText("Đã gửi 2 bản vào hàng chờ in.").first().waitFor();
+  await printDialog.getByRole("img", { name: `Tờ 1 của đơn ${booking.code}` }).waitFor();
+  await printDialog.getByLabel("Số bộ in lại").selectOption("2");
+  await printDialog.getByRole("button", { name: "In lại qua RX1" }).click();
+  await admin.getByText("Đã gửi 2 tờ tới hàng in RX1.").first().waitFor();
   // Lệnh in lại có thêm một bản ghi riêng và báo ngay trên màn hình quản trị đang mở.
   const reprint = await until(async () => {
     const jobs = await PrintJob.find({ code: booking.code }).sort({ createdAt: 1 });
@@ -664,7 +677,9 @@ try {
   }, "lệnh in lại");
   assert.equal(reprint.copies, 2);
   assert.equal(reprint.file, sent.file, "In lại đúng file khách đã gửi");
-  await admin.getByText(/Lệnh in mới · vé #/).first().waitFor();
+  assert.equal(reprint.spoolStatus, "sent");
+  assert.equal(localPrints, 1);
+  await printDialog.getByRole("button", { name: "Đóng", exact: true }).click();
 
   // ── Trợ lí dung lượng: số liệu thật, giới hạn và chỉ dọn ảnh đã hết hạn ──
   // Mở trợ lí từ cảnh báo dung lượng (MongoDB tạm chưa đo được cả cluster); trang cũng có trên menu.

@@ -17,13 +17,15 @@ const byteSize = (value) => Buffer.byteLength(JSON.stringify(value));
 
 // Inspect the actual documents MongoDB returns, rather than just the query
 // text: large photo arrays must not cross the database connection per tile.
-async function bookingReads(action) {
+async function bookingReads(action, updates) {
   const reads = [];
   const client = mongoose.connection.getClient();
   const ns = `${mongoose.connection.db.databaseName}.bookings`;
   const monitor = (event) => {
     if (event.reply?.cursor?.ns === ns)
       reads.push(...(event.reply.cursor.firstBatch || []));
+    if (updates && event.commandName === "findAndModify" && event.reply?.value?.printSheets !== undefined)
+      updates.push(event.reply.value);
   };
   client.on("commandSucceeded", monitor);
   try {
@@ -146,7 +148,7 @@ test("camera upload authorizes without fetching its 400 old photos twice and sti
     status: "checked_in",
     captureSession: sessionId,
     captureEndsAt: new Date(Date.now() + 60000),
-    photos: booking.photos.toObject(),
+    photos: booking.photos.toObject().map((photo) => ({ ...photo, number: photo.number + 5 })),
   });
   const captureToken = jwt.sign({ type: "capture", booking: String(active._id), sessionId }, config.secret);
   const reads = await bookingReads(async () => {
@@ -157,6 +159,8 @@ test("camera upload authorizes without fetching its 400 old photos twice and sti
       .send(jpeg).expect(200);
     assert.equal(saved.body.photos.length, 401);
     assert.equal(saved.body.photos.at(-1).clientKey, "camera-performance-photo");
+    assert.deepEqual(saved.body.photos.map((photo) => photo.number),
+      Array.from({ length: 401 }, (_, i) => i + 1), "an append also repairs legacy numbering");
   });
   // One read answers both authorization and the save's checks (the database is far away on the
   // free plans); the photo is then appended by a single atomic update.
@@ -216,4 +220,60 @@ test("print queue populates just the album link token and still supports marking
   assert.equal(reads.length, 2);
   assert.ok(reads.every((read) => read.photos === undefined && read.accessToken === booking.accessToken));
   assert.equal((await Booking.findById(booking._id)).printed, true);
+});
+
+test("submitting a print for a 400-photo album reads at most one photo and returns only the updated quota", async () => {
+  const sheet = await sharp(jpeg).resize(1772, 1181).jpeg().toBuffer();
+  const full = await Booking.findById(booking._id).lean();
+  const updates = [];
+  const reads = await bookingReads(async () => {
+    const sent = await request(app).post(`/api/albums/${booking.accessToken}/print-pack`)
+      .set("Content-Type", "application/octet-stream")
+      .set("X-Print-Key", randomUUID())
+      .set("X-Print-Frame", "Test")
+      .set("X-Print-Sheets", String(sheet.length))
+      .send(sheet).expect(201);
+    assert.equal(sent.body.prints, 7);
+    assert.equal(sent.body.printSheets, 3);
+  }, updates);
+  assert.equal(reads.length, 1);
+  assert.equal(reads[0].photos.length, 1);
+  assert.equal(updates.length, 1);
+  assert.deepEqual(Object.keys(updates[0]).sort(), ["_id", "printSheets", "prints"]);
+  assert.ok(byteSize(reads[0]) + byteSize(updates[0]) < byteSize(full) / 100);
+});
+
+test("order polling transfers one live print and finds a cover beyond the first five expired photos", async () => {
+  const now = Date.now();
+  const cover = { _id: new mongoose.Types.ObjectId(), file: "cover.jpg", kind: "original" };
+  const historical = await Booking.create({
+    code: "890123", accessToken: randomUUID(), status: "completed", branch: booking.branch,
+    photos: [
+      ...Array.from({ length: 6 }, (_, i) => ({
+        _id: mongoose.Types.ObjectId.createFromTime(Math.floor((now - MEDIA_TTL_MS) / 1000) - i - 1),
+        file: `expired-${i}.jpg`, kind: "original",
+      })),
+      { file: "deleted.jpg", kind: "original", deleted: true },
+      cover,
+    ],
+  });
+  const saved = await PrintJob.create([-3, -2, -1].map((seconds, i) => ({
+    booking: historical._id,
+    createdAt: new Date(now + seconds * 1000),
+    ...(i === 2 && { fileExpiresAt: new Date(now - 1) }),
+    sheets: [{ file: `order-${i}.png` }, { file: `order-${i}-copy.png` }],
+  })));
+  const reads = await bookingReads(async () => {
+    const orders = await request(app).get("/api/admin/bookings").set("Cookie", cookie).expect(200);
+    const found = orders.body.find((order) => order._id === String(historical._id));
+    assert.equal(found.coverPhoto, `/api/albums/${historical.accessToken}/photos/${cover._id}?size=thumbnail`);
+    assert.equal(found.latestPrint._id, String(saved[1]._id));
+    assert.equal(found.latestPrint.format, "png");
+    assert.equal(found.latestPrint.sheetCount, 2);
+  });
+  const matching = reads.filter((row) => String(row._id) === String(historical._id));
+  assert.equal(matching.length, 2, "the booking list and its media use two MongoDB commands");
+  assert.ok(matching.every((row) => row.photos === undefined));
+  assert.deepEqual(Object.keys(matching.find((row) => row.latestPrint)).sort(),
+    ["_id", "coverPhotoId", "latestPrint"]);
 });

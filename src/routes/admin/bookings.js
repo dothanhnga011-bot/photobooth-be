@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { Booking, PrintJob, Room, Setting } from "../../models/index.js";
 import { allow, can, hideMoney, requireBranch, staffBranch } from "../../middleware/auth.js";
-import { livePrintFilter, photoExpiry, MEDIA_TTL_MS } from "../../services/media.js";
+import { expiredPhotoIdBound, livePrintFilter, MEDIA_TTL_MS } from "../../services/media.js";
 import { visibleBookingHistory } from "../../services/booking-history.js";
 import { fail, id, date, today } from "../validation.js";
 import { KIOSK_LIVE_MS } from "../kiosk-session.js";
@@ -40,7 +40,8 @@ bookingsRouter.get("/bookings/awaiting-payment", async (req, res) => {
 });
 
 bookingsRouter.get("/bookings", async (req, res) => {
-  const q = visibleBookingHistory(new Date(), MEDIA_TTL_MS);
+  const now = new Date();
+  const q = visibleBookingHistory(now, MEDIA_TTL_MS);
   const assigned = staffBranch(req);
   if (assigned) q.branch = assigned;
   if (req.query.code)
@@ -71,46 +72,48 @@ bookingsRouter.get("/bookings", async (req, res) => {
     .sort({ createdAt: -1 })
     .limit(q.date?.$gte || q.date?.$lte ? BOOKING_RANGE_LIMIT : 500)
     .lean();
-  const ids = list.map((booking) => booking._id);
-  // Ảnh đại diện từ ảnh gốc chỉ cần cho đơn chưa có ảnh ghép khung.
-  const uncovered = list.filter((booking) => !booking.composite?.file).map((booking) => booking._id);
-  // Ảnh đại diện của đơn: ảnh đã ghép khung (ảnh máy chụp ghép, rồi tới lệnh in gần nhất), chưa có
-  // thì tấm đầu tiên còn hạn.
-  // Hai truy vấn chạy song song nên danh sách không chậm thêm một lượt đi về.
-  const [jobs, covers] = list.length
-    ? await Promise.all([
-        PrintJob.find({
-          booking: { $in: ids },
-          ...livePrintFilter(),
-        })
-          .sort({ createdAt: -1 })
-          .lean(),
-        uncovered.length ? Booking.aggregate([
-          { $match: { _id: { $in: uncovered }, mediaDeleted: { $ne: true } } },
-          { $project: { photos: { $slice: [{ $filter: {
-            input: { $ifNull: ["$photos", []] },
-            as: "p",
-            cond: { $and: [{ $eq: ["$$p.kind", "original"] }, { $ne: ["$$p.deleted", true] }] },
-          } }, 5] } } },
-          { $project: { "photos._id": 1 } },
-        ]) : [],
-      ])
-    : [[], []];
-  const now = Date.now();
-  const cover = new Map(covers.map((b) => [
-    String(b._id),
-    b.photos.find((p) => photoExpiry(p).getTime() > now)?._id,
-  ]));
-  const latest = new Map();
-  for (const job of jobs) {
-    const key = String(job.booking);
-    if (!latest.has(key)) latest.set(key, job);
-  }
+  // MongoDB returns one live print job and one photo ID per order. Use the
+  // (booking, createdAt) print-job index to avoid transferring older jobs.
+  const media = list.length ? await Booking.aggregate([
+    { $match: { _id: { $in: list.map((booking) => booking._id) } } },
+    { $project: { cover: { $cond: [
+      { $or: [
+        { $eq: ["$mediaDeleted", true] },
+        { $ne: [{ $ifNull: ["$composite.file", ""] }, ""] },
+      ] },
+      null,
+      { $first: { $filter: {
+        input: { $ifNull: ["$photos", []] },
+        as: "photo",
+        cond: { $and: [
+          { $eq: ["$$photo.kind", "original"] },
+          { $ne: ["$$photo.deleted", true] },
+          { $gte: ["$$photo._id", expiredPhotoIdBound(now)] },
+        ] },
+      } } },
+    ] } } },
+    { $lookup: {
+      from: PrintJob.collection.name,
+      localField: "_id",
+      foreignField: "booking",
+      pipeline: [
+        { $match: livePrintFilter(now) },
+        { $sort: { createdAt: -1 } },
+        { $limit: 1 },
+        { $project: {
+          requestKey: 0, requestFingerprint: 0, spoolLeaseId: 0, spoolLeaseUntil: 0,
+          "sheets.width": 0, "sheets.height": 0, "sheets._id": 0,
+        } },
+      ],
+      as: "jobs",
+    } },
+    { $project: { coverPhotoId: "$cover._id", latestPrint: { $first: "$jobs" } } },
+  ]) : [];
+  const mediaByBooking = new Map(media.map((entry) => [String(entry._id), entry]));
   res.json(
     list.map((booking) => {
-      const job = latest.get(String(booking._id));
+      const { latestPrint: job, coverPhotoId: photo } = mediaByBooking.get(String(booking._id)) || {};
       const visible = hideMoney(req, booking);
-      const photo = cover.get(String(booking._id));
       const composite = booking.composite?.file && !booking.mediaDeleted && booking.accessToken
         ? `/api/albums/${booking.accessToken}/composite`
         : null;

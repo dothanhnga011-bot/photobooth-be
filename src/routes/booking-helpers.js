@@ -80,9 +80,9 @@ export async function album(req, projection) {
   return b;
 }
 
-export const originals = (b) =>
-  b.photos.filter((p) => p.kind === "original" && !p.deleted);
+const isOriginal = (p) => p.kind === "original" && !p.deleted;
+export const originals = (b) => b.photos.filter(isOriginal);
 export function requireMedia(b) {
-  if (b.status !== "completed" || !originals(b).length)
+  if (b.status !== "completed" || !b.photos?.some(isOriginal))
     fail(409, "Album chưa có ảnh hoặc ảnh đã hết hạn lưu trữ.");
 }

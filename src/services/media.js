@@ -245,6 +245,9 @@ export async function sendMedia(req, res, file, contentType, expiresAt) {
 // mã ảnh (ObjectId), nên ảnh cũ cũng tính đúng. Lệnh in dùng cùng thời hạn kể từ lúc khách gửi.
 export const photoTime = (p) => p._id.getTimestamp().getTime();
 export const photoExpiry = (p) => new Date(photoTime(p) + MEDIA_TTL_MS);
+// ObjectId timestamps have second precision. IDs below this bound have expired.
+export const expiredPhotoIdBound = (now = Date.now()) =>
+  mongoose.Types.ObjectId.createFromTime(Math.floor((Number(now) - MEDIA_TTL_MS) / 1000) + 1);
 export const printExpiry = (job) => new Date(Math.min(
   new Date(job.createdAt).getTime() + MEDIA_TTL_MS,
   job.fileExpiresAt ? new Date(job.fileExpiresAt).getTime() : Infinity,
@@ -275,10 +278,8 @@ export function firstExpiry(photos = []) {
 export async function purgeExpiredMedia(now = new Date()) {
   const cutoff = new Date(now - MEDIA_TTL_MS);
   // Mọi ObjectId tạo trước giây (cutoff + 1) — lọc chính xác lại bằng photoTime bên dưới.
-  const before = mongoose.Types.ObjectId.createFromTime(
-    Math.floor(cutoff.getTime() / 1000) + 1,
-  );
-  const candidates = await Booking.find({
+  const before = expiredPhotoIdBound(now);
+  const candidates = Booking.find({
     $or: [
       { "photos._id": { $lt: before } },
       // Album đã hết ảnh nhưng còn video / ảnh ghép khung.
@@ -288,38 +289,48 @@ export async function purgeExpiredMedia(now = new Date()) {
       { "photos.0": { $exists: false }, mediaExpiresAt: null, createdAt: { $lte: cutoff },
         $or: [{ "video.file": { $exists: true } }, { "composite.file": { $exists: true } }] },
     ],
-  });
+  }).select("photos video composite captureEndsAt createdAt mediaExpiresAt mediaDeleted")
+    .lean().cursor({ batchSize: 32 });
   let changed = 0;
-  for (const b of candidates) {
-    const old = b.photos.filter((p) => photoTime(p) <= cutoff.getTime());
-    const keep = b.photos.filter((p) => photoTime(p) > cutoff.getTime());
-    // Lọc lại hạn của album chỉ có video/ảnh ghép: createdAt có thể sớm hơn buổi chụp nhiều ngày.
-    if (!old.length && (!albumMediaExpiry(b) || albumMediaExpiry(b) > now)) continue;
-    // Video và ảnh ghép khung xóa cùng ảnh cuối cùng của album.
-    const video = keep.length
-      ? []
-      : [b.video?.file, b.composite?.file, b.composite?.thumbnailFile, b.composite?.previewFile].filter(Boolean);
-    if (!old.length && !video.length) continue;
-    changed++;
-    await deleteMedia([
-      ...old.flatMap((p) =>
-        [p.file, p.originalFile, p.thumbnailFile, p.previewFile, p.printFile, p.downloadFile].filter(Boolean),
-      ),
-      ...video,
-    ]);
-    // Chỉ gỡ đúng các ảnh hết hạn (ảnh vừa chụp thêm trong lúc dọn không bị ảnh hưởng).
-    await Booking.updateOne(
-      { _id: b._id },
-      {
-        $pull: { photos: { _id: { $in: old.map((p) => p._id) } } },
-        ...(keep.length && { $set: { mediaExpiresAt: firstExpiry(keep) } }),
-      },
-    );
-    // Hết sạch ảnh: album báo "Ảnh đã hết hạn lưu trữ".
-    await Booking.updateOne(
-      { _id: b._id, photos: { $size: 0 } },
-      { $set: { mediaDeleted: true }, $unset: { video: 1, composite: 1 } },
-    );
+  // Expired albums can accumulate during downtime. Hold one small MongoDB batch in memory.
+  try {
+    for await (const b of candidates) {
+      const photos = b.photos || [];
+      const old = photos.filter((p) => photoTime(p) <= cutoff.getTime());
+      const keep = photos.filter((p) => photoTime(p) > cutoff.getTime());
+      // Lọc lại hạn của album chỉ có video/ảnh ghép: createdAt có thể sớm hơn buổi chụp nhiều ngày.
+      if (!old.length) {
+        const expires = albumMediaExpiry(b);
+        if (!expires || expires > now) continue;
+      }
+      // Video và ảnh ghép khung xóa cùng ảnh cuối cùng của album.
+      const video = keep.length
+        ? []
+        : [b.video?.file, b.composite?.file, b.composite?.thumbnailFile, b.composite?.previewFile].filter(Boolean);
+      if (!old.length && !video.length) continue;
+      changed++;
+      await deleteMedia([
+        ...old.flatMap((p) =>
+          [p.file, p.originalFile, p.thumbnailFile, p.previewFile, p.printFile, p.downloadFile].filter(Boolean),
+        ),
+        ...video,
+      ]);
+      // Chỉ gỡ đúng các ảnh hết hạn (ảnh vừa chụp thêm trong lúc dọn không bị ảnh hưởng).
+      await Booking.updateOne(
+        { _id: b._id },
+        {
+          $pull: { photos: { _id: { $in: old.map((p) => p._id) } } },
+          ...(keep.length && { $set: { mediaExpiresAt: firstExpiry(keep) } }),
+        },
+      );
+      // Hết sạch ảnh: album báo "Ảnh đã hết hạn lưu trữ".
+      await Booking.updateOne(
+        { _id: b._id, photos: { $size: 0 } },
+        { $set: { mediaDeleted: true }, $unset: { video: 1, composite: 1 } },
+      );
+    }
+  } finally {
+    await candidates.close();
   }
   // Lệnh in dùng cùng thời hạn lưu trữ (đã in hay chưa), rồi xóa cùng file tờ in.
   const oldJobs = await PrintJob.find({ $or: [{ createdAt: { $lte: cutoff } }, { fileExpiresAt: { $lte: now } }] });

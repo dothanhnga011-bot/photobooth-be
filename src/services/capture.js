@@ -403,18 +403,33 @@ export function appendCapture(
 // last number in use. These stages run inside the same atomic update as the append or delete,
 // so concurrent saves and deletes can never hand out a number twice.
 export const renumberPhotoStages = () => [
-  { $set: { numbering: { $reduce: {
-    input: "$photos",
-    initialValue: { n: 0, list: [] },
-    in: { $let: {
-      vars: { hidden: { $eq: ["$$this.deleted", true] }, next: { $add: ["$$value.n", 1] } },
-      in: {
-        n: { $cond: ["$$hidden", "$$value.n", "$$next"] },
-        list: { $concatArrays: ["$$value.list", [{ $cond: ["$$hidden", "$$this",
-          { $mergeObjects: ["$$this", { number: "$$next" }] }] }]] },
-      },
+  { $set: { numbering: { $cond: [
+    // Most sessions have no globally deleted photos. Number by array index in one pass.
+    { $in: [true, { $ifNull: ["$photos.deleted", []] }] },
+    { $reduce: {
+      input: "$photos",
+      initialValue: { n: 0, list: [] },
+      in: { $let: {
+        vars: { hidden: { $eq: ["$$this.deleted", true] }, next: { $add: ["$$value.n", 1] } },
+        in: {
+          n: { $cond: ["$$hidden", "$$value.n", "$$next"] },
+          list: { $concatArrays: ["$$value.list", [{ $cond: ["$$hidden", "$$this",
+            { $mergeObjects: ["$$this", { number: "$$next" }] }] }]] },
+        },
+      } },
     } },
-  } } } },
+    {
+      n: { $size: "$photos" },
+      list: { $map: {
+        input: { $range: [0, { $size: "$photos" }] },
+        as: "i",
+        in: { $mergeObjects: [
+          { $arrayElemAt: ["$photos", "$$i"] },
+          { number: { $add: ["$$i", 1] } },
+        ] },
+      } },
+    },
+  ] } } },
   { $set: { photos: "$numbering.list", nextPhotoNumber: "$numbering.n" } },
   { $unset: "numbering" },
 ];

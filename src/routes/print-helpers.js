@@ -19,7 +19,7 @@ export const reserveSheets = (b, n, frameName = "") =>
       },
     },
     { $inc: { printSheets: n }, ...(frameName && { $set: { frameName } }) },
-    { new: true },
+    { new: true, projection: { prints: 1, printSheets: 1 }, lean: true },
   );
 export const releaseSheets = (bookingId, n) =>
   Booking.updateOne({ _id: bookingId }, [
