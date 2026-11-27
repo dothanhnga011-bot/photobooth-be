@@ -51,7 +51,7 @@ export async function printCups(printer, sheets) {
   } catch (error) {
     const names = (await run("lpstat", ["-e"]).catch(() => "")).split("\n").filter(Boolean);
     throw new Error(`Không thấy máy in "${printer}" trên Mac này${names.length
-      ? ` (DNP_PRINTER_NAME phải là một trong: ${names.join(", ")})` : ""} — ${error.message}`);
+      ? ` (DNP_PRINTER_NAME phải là một trong: ${names.join(", ")})` : ""} — ${error.message}`, { cause: error });
   }
   const page = pageSize(options);
   if (page.warning) console.warn(page.warning);

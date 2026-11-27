@@ -7,7 +7,7 @@ import { MongoMemoryServer } from "mongodb-memory-server";
 import request from "supertest";
 import { app } from "../src/app.js";
 import { config } from "../src/config.js";
-import { Booking, Setting } from "../src/models/index.js";
+import { Booking } from "../src/models/index.js";
 
 let memory;
 before(async () => {

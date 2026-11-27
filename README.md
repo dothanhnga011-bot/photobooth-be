@@ -275,6 +275,10 @@ npm run test:browser          # toàn luồng trên trình duyệt, cần build 
 Các bài test dùng MongoDB tạm, không đụng dữ liệu thật và luôn tắt máy in
 (không in ra giấy dù `.env` có cấu hình thiết bị).
 
+GitHub Actions (`.github/workflows/test.yml`) tự chạy `npm test` trên Linux (như Render) mỗi lần push lên
+`main`. Dấu ✗ đỏ cạnh commit trên GitHub = có test hỏng. Để Render chỉ triển khai bản đã qua test: Render →
+dịch vụ → Settings → Auto-Deploy = **After CI Checks Pass**.
+
 ## Models và collection
 
 Mỗi model nằm trong file riêng ở `src/models/`: `User.js`, `Room.js`, `Package.js`, `Frame.js`,

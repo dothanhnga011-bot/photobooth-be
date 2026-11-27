@@ -1,0 +1,34 @@
+# Mỗi lần push lên main (và mỗi pull request): chạy toàn bộ test máy chủ trên Linux như Render.
+# MongoDB chạy trong bộ nhớ (mongodb-memory-server), kho ảnh là GridFS (test/environment.js): không đụng
+# tới cơ sở dữ liệu hay R2 thật.
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      # Bản MongoDB mà mongodb-memory-server tải về (~100 MB): giữ lại giữa các lần chạy.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npm ci
+      - name: Kiểm tra code (ESLint)
+        run: npm run lint -- --max-warnings 0
+      - run: npm test

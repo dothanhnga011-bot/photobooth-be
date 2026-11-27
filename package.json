@@ -10,6 +10,7 @@
     "print:agent": "node scripts/print-agent.js",
     "r2:check": "node scripts/check-r2.js",
     "test": "node --import ./test/environment.js --test test/*.test.js",
+    "lint": "eslint .",
     "test:browser": "node test/browser-smoke.mjs"
   },
   "dependencies": {
@@ -29,7 +30,10 @@
     "zod": "^4.1.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.63.0",
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0",
     "mongodb-memory-server": "^10.2.0",
     "supertest": "^7.1.4"
   },

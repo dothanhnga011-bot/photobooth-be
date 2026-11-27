@@ -73,7 +73,7 @@ async function print(job) {
 async function cycle() {
   const { job } = await (await post("/claim", { branch, ...(printSizes.length && { printSizes }) })).json();
   if (!job) return false;
-  let sent = false, message = "";
+  let sent = false, message;
   try {
     message = (await print(job)) || "";
     sent = true;
@@ -87,9 +87,9 @@ async function cycle() {
 }
 
 console.log(`Print agent đang theo dõi chi nhánh ${branch}${printSizes.length ? ` (khổ: ${printSizes.join(", ")})` : ""}.`);
-do {
+for (;;) {
   try { await cycle(); }
   catch (error) { console.error(`Không thể nhận lệnh in: ${error.message}`); }
   if (process.env.PRINT_AGENT_ONCE === "1") break;
   await new Promise((resolve) => setTimeout(resolve, 4000));
-} while (true);
+}

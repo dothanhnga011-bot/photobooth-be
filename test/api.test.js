@@ -35,7 +35,7 @@ import {
   finishOverdueSessions,
 } from "../src/services/capture.js";
 let memory, room, pack, staff, admin;
-const bookingData = (time) => ({
+const bookingData = () => ({
   name: "Khách thử nghiệm",
   phone: "0912345678",
   room: String(room._id),

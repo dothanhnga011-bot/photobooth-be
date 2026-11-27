@@ -409,7 +409,7 @@ const compositeBody = express.raw({ type: ["image/jpeg"], limit: "40mb", inflate
 kioskRouter.post("/composite", compositeBody, async (req, res) => {
   if (!Buffer.isBuffer(req.body) || !req.body.length) fail(400, "Ảnh ghép trống.");
   const { b } = await captureBooking(z.string().parse(req.get("X-Capture-Token")), { authOnly: true });
-  let frameName = "";
+  let frameName;
   try {
     frameName = decodeURIComponent(req.get("X-Frame-Name") || "").trim().slice(0, 200);
   } catch {

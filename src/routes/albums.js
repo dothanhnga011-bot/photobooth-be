@@ -15,7 +15,6 @@ import {
   photoExpiry,
   photoFile,
   albumMediaExpiry,
-  MEDIA_TTL_MS,
   printExpiry,
 } from "../services/media.js";
 import { sendZip } from "../services/zip.js";
